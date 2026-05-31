@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"cau-used-goods-app/backend/internal/config"
 	jwtutil "cau-used-goods-app/backend/pkg/jwt"
@@ -31,8 +32,13 @@ func NewService(repo *Repository, jwtCfg config.JWTConfig, wechatCfg config.Wech
 }
 
 func (s *Service) DevLogin(ctx context.Context, input DevLoginInput) (*LoginResult, error) {
+	input.OpenID = strings.TrimSpace(input.OpenID)
+	input.Role = strings.TrimSpace(input.Role)
 	if input.OpenID == "" {
 		input.OpenID = "dev_openid_001"
+	}
+	if len(input.OpenID) > 64 {
+		return nil, fmt.Errorf("openid 长度不能超过 64 个字符")
 	}
 	if input.Role != "" && input.Role != "USER" && input.Role != "ADMIN" {
 		return nil, fmt.Errorf("role must be USER or ADMIN")
@@ -56,8 +62,12 @@ func (s *Service) DevLogin(ctx context.Context, input DevLoginInput) (*LoginResu
 }
 
 func (s *Service) WechatLogin(ctx context.Context, code string) (*LoginResult, error) {
+	code = strings.TrimSpace(code)
 	if code == "" {
 		return nil, fmt.Errorf("code is required")
+	}
+	if len(code) > 128 {
+		return nil, fmt.Errorf("code 长度不能超过 128 个字符")
 	}
 
 	openid, err := s.fetchWechatOpenID(ctx, code)

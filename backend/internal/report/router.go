@@ -2,11 +2,9 @@ package report
 
 import (
 	"github.com/gin-gonic/gin"
-
-	"cau-used-goods-app/backend/internal/middleware"
 )
 
-func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMiddleware gin.HandlerFunc) {
+func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMiddleware, adminMiddleware gin.HandlerFunc) {
 	// 用户端
 	group := r.Group("/reports")
 	group.Use(authMiddleware, verifiedMiddleware)
@@ -18,7 +16,7 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMid
 
 	// 管理员端
 	adminGroup := r.Group("/admin/reports")
-	adminGroup.Use(authMiddleware, middleware.Admin())
+	adminGroup.Use(authMiddleware, adminMiddleware)
 	{
 		adminGroup.GET("", handler.ListAll)
 		adminGroup.POST("/:id/handle", handler.Handle)

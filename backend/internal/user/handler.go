@@ -65,6 +65,10 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
 	}
+	if err := h.service.EnsureAccountNormal(c.Request.Context(), userID); err != nil {
+		writeUserError(c, err)
+		return
+	}
 
 	var req updateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -87,7 +91,7 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 		Phone:     req.Phone,
 	})
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		writeUserError(c, err)
 		return
 	}
 	response.Success(c, user)
@@ -97,6 +101,10 @@ func (h *Handler) UploadAvatar(c *gin.Context) {
 	userID, ok := middleware.CurrentUserID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	if err := h.service.EnsureAccountNormal(c.Request.Context(), userID); err != nil {
+		writeUserError(c, err)
 		return
 	}
 
@@ -141,7 +149,7 @@ func (h *Handler) UploadAvatar(c *gin.Context) {
 		AvatarURL: &avatarURL,
 	})
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
+		writeUserError(c, err)
 		return
 	}
 	response.Success(c, gin.H{
@@ -169,7 +177,7 @@ func (h *Handler) SubmitStudentVerification(c *gin.Context) {
 		College:   req.College,
 	})
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		writeUserError(c, err)
 		return
 	}
 	response.Success(c, verification)
@@ -283,7 +291,7 @@ func (h *Handler) ListStudentVerifications(c *gin.Context) {
 	status := c.DefaultQuery("authStatus", "PENDING")
 	items, err := h.service.ListStudentVerifications(c.Request.Context(), status)
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		writeUserError(c, err)
 		return
 	}
 	response.Success(c, gin.H{"items": items})
@@ -314,8 +322,26 @@ func (h *Handler) ReviewStudentVerification(c *gin.Context) {
 		Description: req.Description,
 	})
 	if err != nil {
-		response.Error(c, http.StatusConflict, response.CodeConflict, err.Error())
+		writeUserError(c, err)
 		return
 	}
 	response.Success(c, verification)
+}
+
+func writeUserError(c *gin.Context, err error) {
+	message := err.Error()
+	switch message {
+	case "当前账号状态不可操作", "目标用户账号状态不可审核", "管理员不能审核自己的认证":
+		response.Error(c, http.StatusForbidden, response.CodeForbidden, message)
+	case "用户不存在":
+		response.Error(c, http.StatusNotFound, response.CodeNotFound, message)
+	case "学号已被使用",
+		"学生认证正在审核中，请勿重复提交",
+		"学生认证已通过，不能重复提交",
+		"当前认证状态不可提交",
+		"认证状态已变化，请刷新后重试":
+		response.Error(c, http.StatusConflict, response.CodeConflict, message)
+	default:
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, message)
+	}
 }
