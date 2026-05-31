@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 type User struct {
@@ -72,13 +74,13 @@ SET nickname = COALESCE(?, nickname),
     avatar_url = COALESCE(?, avatar_url),
     phone = COALESCE(?, phone),
     update_time = NOW()
-WHERE id = ? AND is_deleted = 0`
+WHERE id = ? AND account_status = 'NORMAL' AND is_deleted = 0`
 
 	result, err := r.db.ExecContext(ctx, execSQL, nickname, avatarURL, phone, userID)
 	if err != nil {
 		return fmt.Errorf("update user profile: %w", err)
 	}
-	return checkAffected(result, "user not found")
+	return checkAffected(result, "当前账号状态不可操作")
 }
 
 func (r *Repository) SubmitStudentVerification(ctx context.Context, userID uint64, studentID, realName, college string) error {
@@ -89,13 +91,33 @@ SET student_id = ?,
     college = ?,
     auth_status = 'PENDING',
     update_time = NOW()
-WHERE id = ? AND is_deleted = 0`
+WHERE id = ? AND account_status = 'NORMAL' AND is_deleted = 0`
 
 	result, err := r.db.ExecContext(ctx, execSQL, studentID, realName, college, userID)
 	if err != nil {
+		if isDuplicateEntry(err) {
+			return fmt.Errorf("学号已被使用")
+		}
 		return fmt.Errorf("submit student verification: %w", err)
 	}
-	return checkAffected(result, "user not found")
+	return checkAffected(result, "当前账号状态不可操作")
+}
+
+func (r *Repository) StudentIDUsedByOther(ctx context.Context, studentID string, userID uint64) (bool, error) {
+	const query = `
+SELECT 1
+FROM users
+WHERE student_id = ? AND id <> ? AND is_deleted = 0
+LIMIT 1`
+
+	var exists int
+	if err := r.db.QueryRowContext(ctx, query, studentID, userID).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check student id uniqueness: %w", err)
+	}
+	return true, nil
 }
 
 func (r *Repository) FindStudentVerification(ctx context.Context, userID uint64) (*StudentVerification, error) {
@@ -172,7 +194,7 @@ func (r *Repository) ReviewStudentVerification(ctx context.Context, adminID uint
 	result, err := tx.ExecContext(ctx, `
 UPDATE users
 SET auth_status = ?, update_time = NOW()
-WHERE id = ? AND auth_status = 'PENDING' AND is_deleted = 0`, authStatus, userID)
+WHERE id = ? AND auth_status = 'PENDING' AND account_status = 'NORMAL' AND is_deleted = 0`, authStatus, userID)
 	if err != nil {
 		return fmt.Errorf("review student verification: %w", err)
 	}
@@ -181,7 +203,7 @@ WHERE id = ? AND auth_status = 'PENDING' AND is_deleted = 0`, authStatus, userID
 		return fmt.Errorf("get review affected rows: %w", err)
 	}
 	if affected == 0 {
-		return fmt.Errorf("student verification is not pending or user not found")
+		return fmt.Errorf("认证状态已变化，请刷新后重试")
 	}
 
 	operationType := "STUDENT_VERIFY_REJECT"
@@ -211,4 +233,9 @@ func checkAffected(result sql.Result, notFoundMsg string) error {
 		return fmt.Errorf(notFoundMsg)
 	}
 	return nil
+}
+
+func isDuplicateEntry(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
 }
