@@ -54,8 +54,10 @@ func main() {
 	userRepo := user.NewRepository(db.DB())
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
+
 	sensitiveRepo := sensitive.NewRepository(db.DB())
 	sensitiveService := sensitive.NewService(sensitiveRepo)
+
 	productRepo := product.NewRepository(db.DB())
 	productService := product.NewService(productRepo, sensitiveService)
 	productHandler := product.NewHandler(productService)
@@ -88,11 +90,14 @@ func main() {
 
 	uploadService := upload.NewService()
 	uploadHandler := upload.NewHandler(uploadService)
+
 	statsRepo := stats.NewRepository(db.DB())
 	statsService := stats.NewService(statsRepo)
 	statsHandler := stats.NewHandler(statsService)
+
 	aiService := ai.NewService(cfg.AI.APIKey)
 	aiHandler := ai.NewHandler(aiService)
+
 	r := gin.Default()
 	r.Static("/uploads", "./uploads")
 
