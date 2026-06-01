@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -52,6 +53,10 @@ func (h *Handler) WechatLogin(c *gin.Context) {
 
 	result, err := h.service.WechatLogin(c.Request.Context(), req.Code)
 	if err != nil {
+		if strings.Contains(err.Error(), "code") {
+			response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
 		return
 	}

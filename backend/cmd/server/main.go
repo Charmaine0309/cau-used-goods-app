@@ -103,22 +103,23 @@ func main() {
 
 	authMiddleware := middleware.Auth(cfg.JWT.Secret)
 	verifiedMiddleware := middleware.Verified(db.DB())
+	adminMiddleware := middleware.Admin(db.DB())
 
 	auth.RegisterRoutes(r, authHandler, authMiddleware, cfg.Server.Env == "dev")
 	user.RegisterRoutes(r, userHandler, authMiddleware)
-	user.RegisterAdminRoutes(r, userHandler, authMiddleware, middleware.Admin())
+	user.RegisterAdminRoutes(r, userHandler, authMiddleware, adminMiddleware)
 	order.RegisterRoutes(r, orderHandler, authMiddleware, verifiedMiddleware)
 	favorite.RegisterRoutes(r, favoriteHandler, authMiddleware, verifiedMiddleware)
 	review.RegisterRoutes(r, reviewHandler, authMiddleware, verifiedMiddleware)
-	report.RegisterRoutes(r, reportHandler, authMiddleware, verifiedMiddleware)
+	report.RegisterRoutes(r, reportHandler, authMiddleware, verifiedMiddleware, adminMiddleware)
 	message.RegisterRoutes(r, messageHandler, authMiddleware)
-	admin.RegisterRoutes(r, adminHandler, authMiddleware, middleware.Admin())
-	sensitive.RegisterAdminRoutes(r, sensitiveHandler, authMiddleware, middleware.Admin())
+	admin.RegisterRoutes(r, adminHandler, authMiddleware, adminMiddleware)
+	sensitive.RegisterAdminRoutes(r, sensitiveHandler, authMiddleware, adminMiddleware)
+
 	product.RegisterRoutes(r, productHandler, authMiddleware)
 	upload.RegisterRoutes(r, uploadHandler, authMiddleware)
 	ai.RegisterRoutes(r, aiHandler, authMiddleware)
-	stats.RegisterRoutes(r, statsHandler, authMiddleware, middleware.Admin())
-
+	stats.RegisterRoutes(r, statsHandler, authMiddleware, adminMiddleware)
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	log.Printf("server listening on %s", addr)
 	if err := r.Run(addr); err != nil {
