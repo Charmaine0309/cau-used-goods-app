@@ -30,7 +30,6 @@ Page({
       } catch (wechatError) {
         result = await api.devLogin({
           openid: "frontend_a_dev_user",
-          nickname: "微信用户",
           role: "USER"
         });
       }

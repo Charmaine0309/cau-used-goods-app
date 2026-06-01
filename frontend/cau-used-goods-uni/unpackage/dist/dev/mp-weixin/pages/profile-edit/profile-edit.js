@@ -107,9 +107,16 @@ Page({
       wx.showToast({ title: "请填写昵称或手机号", icon: "none" });
       return;
     }
+    if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
+      wx.showToast({ title: "手机号格式不正确", icon: "none" });
+      return;
+    }
+    const payload = {};
+    if (nickname) payload.nickname = nickname;
+    if (phone) payload.phone = phone;
     this.setData({ loading: true });
     try {
-      const user = await api.updateProfile({ nickname, phone });
+      const user = await api.updateProfile(payload);
       auth.setUser(user);
       wx.showToast({ title: "资料已保存", icon: "success" });
       setTimeout(() => wx.navigateBack(), 600);
