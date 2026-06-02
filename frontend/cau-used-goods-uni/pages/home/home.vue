@@ -1,5 +1,10 @@
 <template>
   <view class="page">
+    <view class="top-row">
+      <view class="page-title">CAU二手交易平台</view>
+      <button class="mine-button" size="mini" @click="goMine">我的</button>
+    </view>
+
     <view class="search-box" @click="goSearch">
       搜索二手商品
     </view>
@@ -72,6 +77,12 @@ const goDetail = (id) => {
     url: `/pages/detail/detail?id=${id}`
   })
 }
+
+const goMine = () => {
+  uni.navigateTo({
+    url: '/pages/index/index'
+  })
+}
 </script>
 
 <style scoped>
@@ -80,6 +91,24 @@ const goDetail = (id) => {
   padding: 32rpx;
   background: #f6f7f9;
   box-sizing: border-box;
+}
+
+.top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+
+.page-title {
+  font-size: 38rpx;
+  font-weight: 700;
+  color: #1f2933;
+}
+
+.mine-button {
+  background: #ffffff;
+  color: #17a84b;
 }
 
 .search-box {

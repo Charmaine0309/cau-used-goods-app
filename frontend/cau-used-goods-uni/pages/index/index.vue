@@ -1,52 +1,84 @@
 <template>
-	<view class="content">
-		<image class="logo" src="/static/logo.png"></image>
-		<view class="text-area">
-			<text class="title">{{title}}</text>
-		</view>
-	</view>
+  <view class="page">
+    <view class="profile-card">
+      <image v-if="avatarUrl" class="avatar" :src="avatarUrl" mode="aspectFill" />
+      <view v-else class="avatar placeholder">头像</view>
+      <view class="profile-main">
+        <view class="nickname">{{ user.nickname || '微信用户' }}</view>
+        <view class="status">学生认证：{{ authText }}</view>
+      </view>
+      <button class="edit-button" size="mini" @click="goProfileEdit">修改资料</button>
+    </view>
+
+    <view class="menu-card">
+      <view class="menu-item" @click="goStudentAuth">学生认证</view>
+      <view class="menu-item" @click="goAddress">地址管理</view>
+      <view v-if="isAdmin" class="menu-item" @click="goAdmin">后台管理</view>
+    </view>
+
+    <button class="logout-button" @click="logout">退出登录</button>
+  </view>
 </template>
 
-<script>
-	export default {
-		data() {
-			return {
-				title: 'Hello'
-			}
-		},
-		onLoad() {
+<script setup>
+import { computed, ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { getCurrentUser } from '../../api/auth'
+import { clearAuth, getUser, setUser } from '../../utils/auth'
 
-		},
-		methods: {
+const BASE_URL = 'http://127.0.0.1:8080'
+const user = ref(getUser() || {})
 
-		}
-	}
+const authMap = {
+  UNVERIFIED: '未认证',
+  PENDING: '审核中',
+  VERIFIED: '已认证',
+  REJECTED: '已驳回'
+}
+
+const authText = computed(() => authMap[user.value?.authStatus] || '未认证')
+const isAdmin = computed(() => user.value?.role === 'ADMIN')
+const avatarUrl = computed(() => {
+  const url = user.value?.avatarUrl || ''
+  if (!url) return ''
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  if (url.startsWith('/uploads/')) return BASE_URL + url
+  return url
+})
+
+onShow(async () => {
+  try {
+    const current = await getCurrentUser()
+    user.value = current
+    setUser(current)
+  } catch (error) {
+    if (error.message) {
+      uni.showToast({ title: error.message, icon: 'none' })
+    }
+  }
+})
+
+const goProfileEdit = () => uni.navigateTo({ url: '/pages/profile-edit/profile-edit' })
+const goStudentAuth = () => uni.navigateTo({ url: '/pages/student-auth/student-auth' })
+const goAddress = () => uni.navigateTo({ url: '/pages/address/address' })
+const goAdmin = () => uni.navigateTo({ url: '/pages/admin/admin' })
+
+const logout = () => {
+  clearAuth()
+  uni.reLaunch({ url: '/pages/login/login' })
+}
 </script>
 
-<style>
-	.content {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.logo {
-		height: 200rpx;
-		width: 200rpx;
-		margin-top: 200rpx;
-		margin-left: auto;
-		margin-right: auto;
-		margin-bottom: 50rpx;
-	}
-
-	.text-area {
-		display: flex;
-		justify-content: center;
-	}
-
-	.title {
-		font-size: 36rpx;
-		color: #8f8f94;
-	}
+<style scoped>
+.page { min-height: 100vh; padding: 24rpx; background: #f5f6f8; box-sizing: border-box; }
+.profile-card { display: flex; align-items: center; min-height: 156rpx; padding: 28rpx; border-radius: 16rpx; background: #fff; }
+.avatar { width: 104rpx; height: 104rpx; border-radius: 52rpx; background: #dce3ea; display: flex; align-items: center; justify-content: center; color: #8b98a7; font-size: 24rpx; }
+.profile-main { flex: 1; margin-left: 24rpx; }
+.nickname { font-size: 34rpx; font-weight: 700; color: #1f2933; }
+.status { margin-top: 12rpx; font-size: 26rpx; color: #667085; }
+.edit-button { background: #eef7f0; color: #17a84b; }
+.menu-card { margin-top: 24rpx; border-radius: 16rpx; background: #fff; overflow: hidden; }
+.menu-item { height: 104rpx; line-height: 104rpx; padding: 0 28rpx; border-bottom: 1rpx solid #eef0f3; color: #1f2933; font-size: 30rpx; font-weight: 600; }
+.menu-item:last-child { border-bottom: 0; }
+.logout-button { margin-top: 28rpx; height: 88rpx; line-height: 88rpx; border-radius: 12rpx; background: #fff; color: #ef4444; font-size: 30rpx; }
 </style>

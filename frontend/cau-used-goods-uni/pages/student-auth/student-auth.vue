@@ -1,47 +1,76 @@
 <template>
   <view class="page">
-    <view class="title">Student Verification</view>
+    <view class="title">学生认证</view>
+    <view class="status">当前状态：{{ statusText }}</view>
 
     <view class="form-item">
-      <text class="label">Real Name</text>
-      <input class="input" v-model="form.realName" placeholder="Enter real name" />
+      <text class="label">姓名</text>
+      <input class="input" v-model="form.realName" placeholder="请输入姓名" />
     </view>
 
     <view class="form-item">
-      <text class="label">Student ID</text>
-      <input class="input" v-model="form.studentId" placeholder="Enter student ID" />
+      <text class="label">学号</text>
+      <input class="input" v-model="form.studentId" type="number" placeholder="请输入学号" />
     </view>
 
     <view class="form-item">
-      <text class="label">College</text>
-      <input class="input" v-model="form.college" placeholder="Enter college" />
+      <text class="label">学院</text>
+      <input class="input" v-model="form.college" placeholder="请输入学院" />
     </view>
 
     <button class="submit-button" :loading="loading" @click="handleSubmit">
-      Submit Verification
+      提交认证
     </button>
 
     <button class="secondary-button" @click="goHome">
-      Preview Home
+      返回首页
     </button>
   </view>
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
-import { submitStudentVerification } from '../../api/auth'
+import { computed, reactive, ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { getCurrentUser, getStudentVerification, submitStudentVerification } from '../../api/auth'
+import { setUser } from '../../utils/auth'
 
 const loading = ref(false)
+const authStatus = ref('UNVERIFIED')
 const form = reactive({
   realName: '',
   studentId: '',
   college: ''
 })
 
+const statusMap = {
+  UNVERIFIED: '未认证',
+  PENDING: '审核中',
+  VERIFIED: '已认证',
+  REJECTED: '已驳回'
+}
+
+const statusText = computed(() => statusMap[authStatus.value] || '未认证')
+
+onShow(async () => {
+  try {
+    const user = await getCurrentUser()
+    setUser(user)
+    authStatus.value = user.authStatus || 'UNVERIFIED'
+    const verification = await getStudentVerification()
+    form.realName = verification.realName || ''
+    form.studentId = verification.studentId || ''
+    form.college = verification.college || ''
+  } catch (error) {
+    if (error.message) {
+      uni.showToast({ title: error.message, icon: 'none' })
+    }
+  }
+})
+
 const validateForm = () => {
-  if (!form.realName.trim()) return 'Enter real name'
-  if (!form.studentId.trim()) return 'Enter student ID'
-  if (!form.college.trim()) return 'Enter college'
+  if (!/^[\u4e00-\u9fa5]{2,20}$/.test(form.realName.trim())) return '姓名需填写2到20个汉字'
+  if (!/^\d{6,20}$/.test(form.studentId.trim())) return '学号需填写6到20位数字'
+  if (!/^[\u4e00-\u9fa5]{2,30}$/.test(form.college.trim())) return '学院需填写2到30个汉字'
   return ''
 }
 
@@ -72,13 +101,15 @@ const handleSubmit = async () => {
     })
 
     uni.showToast({
-      title: 'Submit success',
+      title: '提交成功',
       icon: 'success'
     })
+    const user = await getCurrentUser()
+    setUser(user)
     goHome()
   } catch (error) {
     uni.showToast({
-      title: error.message || 'Submit failed',
+      title: error.message || '提交失败',
       icon: 'none'
     })
   } finally {
@@ -96,10 +127,16 @@ const handleSubmit = async () => {
 }
 
 .title {
-  margin-bottom: 48rpx;
+  margin-bottom: 16rpx;
   font-size: 40rpx;
   font-weight: 700;
   color: #1f2933;
+}
+
+.status {
+  margin-bottom: 40rpx;
+  color: #6b7280;
+  font-size: 28rpx;
 }
 
 .form-item {

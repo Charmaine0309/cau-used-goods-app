@@ -47,6 +47,18 @@
       "style": {
         "navigationBarTitleText": "学生认证"
       }
+    },
+    {
+      "path": "pages/address/address",
+      "style": {
+        "navigationBarTitleText": "地址管理"
+      }
+    },
+    {
+      "path": "pages/admin/admin",
+      "style": {
+        "navigationBarTitleText": "后台管理"
+      }
     }
   ],
   "globalStyle": {

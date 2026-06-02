@@ -25,6 +25,18 @@ go run .\cmd\server
 
 ## 已对接真实接口
 
+- POST /auth/dev-login：登录并保存 token。
+- GET /users/me：个人中心获取当前用户资料。
+- PUT /users/profile：修改昵称、手机号、头像地址。
+- POST /users/avatar：上传头像。
+- POST /users/student-verify：提交学生认证。
+- GET /users/student-verify：查看学生认证状态。
+- GET /admin/users/student-verifications：管理员查看待审核学生认证。
+- PUT /admin/users/:id/student-verify：管理员审核学生认证。
+- GET /stats/users/overview：用户数据看板。
+- GET /stats/products/overview：商品数据看板。
+- GET /stats/orders/overview：订单数据看板。
+- GET /admin/logs：管理员日志。
 - GET /categories：首页、搜索、分类页加载商品分类。
 - GET /products：首页最新商品、搜索结果、分类商品列表。
 - GET /products/:id：商品详情。
@@ -37,3 +49,5 @@ go run .\cmd\server
 ## 注意
 
 后端 SQL 当前只初始化分类，不初始化商品。如果数据库 products 表没有商品数据，首页和搜索页会显示暂无商品。这种情况需要先由发布商品模块写入商品数据，或者由后端同学提供测试商品数据。
+
+地址管理当前为前端本地缓存实现，后端提供地址接口后再替换为真实接口。

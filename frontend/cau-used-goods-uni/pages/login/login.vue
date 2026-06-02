@@ -1,19 +1,14 @@
 <template>
   <view class="page">
-    <view class="title">CAU Used Goods</view>
-    <view class="subtitle">Campus second-hand market</view>
+    <view class="title">CAU二手交易平台</view>
 
     <button class="login-button" :loading="loading" @click="handleDevLogin">
-      Dev Login
+      微信登录
     </button>
 
-    <button class="secondary-button" @click="previewStudentAuth">
-      Preview Student Verification
+    <button class="secondary-button" :loading="adminLoading" @click="handleAdminLogin">
+      管理员测试登录
     </button>
-
-    <view class="tip">
-      Dev Login calls /auth/dev-login and stores the returned token.
-    </view>
   </view>
 </template>
 
@@ -23,51 +18,44 @@ import { devLogin } from '../../api/auth'
 import { saveLoginResult } from '../../utils/auth'
 
 const loading = ref(false)
+const adminLoading = ref(false)
 
-const goNext = (user) => {
-  if (user?.authStatus === 'VERIFIED') {
-    uni.navigateTo({
-      url: '/pages/home/home'
-    })
-    return
-  }
-
-  uni.navigateTo({
-    url: '/pages/student-auth/student-auth'
+const goHome = () => {
+  uni.reLaunch({
+    url: '/pages/home/home'
   })
 }
 
-const handleDevLogin = async () => {
-  if (loading.value) return
-
-  loading.value = true
+const loginByRole = async (role) => {
+  const isAdmin = role === 'ADMIN'
+  if (loading.value || adminLoading.value) return
+  if (isAdmin) adminLoading.value = true
+  else loading.value = true
   try {
     const result = await devLogin({
-      openid: 'frontend_a_dev_user',
-      role: 'USER'
+      openid: isAdmin ? 'frontend_a_admin_user' : 'frontend_a_dev_user',
+      role
     })
 
     saveLoginResult(result)
     uni.showToast({
-      title: 'Login success',
+      title: '登录成功',
       icon: 'success'
     })
-    goNext(result.user)
+    goHome()
   } catch (error) {
     uni.showToast({
-      title: error.message || 'Login failed',
+      title: error.message || '登录失败',
       icon: 'none'
     })
   } finally {
     loading.value = false
+    adminLoading.value = false
   }
 }
 
-const previewStudentAuth = () => {
-  uni.navigateTo({
-    url: '/pages/student-auth/student-auth'
-  })
-}
+const handleDevLogin = () => loginByRole('USER')
+const handleAdminLogin = () => loginByRole('ADMIN')
 </script>
 
 <style scoped>
@@ -79,17 +67,10 @@ const previewStudentAuth = () => {
 }
 
 .title {
-  margin-top: 120rpx;
+  margin-top: 180rpx;
   font-size: 44rpx;
   font-weight: 700;
   color: #1f2933;
-  text-align: center;
-}
-
-.subtitle {
-  margin-top: 24rpx;
-  font-size: 28rpx;
-  color: #6b7280;
   text-align: center;
 }
 
@@ -111,13 +92,5 @@ const previewStudentAuth = () => {
   background: #ffffff;
   color: #374151;
   font-size: 30rpx;
-}
-
-.tip {
-  margin-top: 32rpx;
-  line-height: 1.6;
-  font-size: 24rpx;
-  color: #9ca3af;
-  text-align: center;
 }
 </style>
