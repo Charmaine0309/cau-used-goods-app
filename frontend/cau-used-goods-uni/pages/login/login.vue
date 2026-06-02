@@ -5,10 +5,6 @@
     <button class="login-button" :loading="loading" @click="handleDevLogin">
       微信登录
     </button>
-
-    <button class="secondary-button" :loading="adminLoading" @click="handleAdminLogin">
-      管理员测试登录
-    </button>
   </view>
 </template>
 
@@ -18,7 +14,6 @@ import { devLogin } from '../../api/auth'
 import { saveLoginResult } from '../../utils/auth'
 
 const loading = ref(false)
-const adminLoading = ref(false)
 
 const goHome = () => {
   uni.reLaunch({
@@ -26,15 +21,13 @@ const goHome = () => {
   })
 }
 
-const loginByRole = async (role) => {
-  const isAdmin = role === 'ADMIN'
-  if (loading.value || adminLoading.value) return
-  if (isAdmin) adminLoading.value = true
-  else loading.value = true
+const handleDevLogin = async () => {
+  if (loading.value) return
+  loading.value = true
   try {
     const result = await devLogin({
-      openid: isAdmin ? 'frontend_a_admin_user' : 'frontend_a_dev_user',
-      role
+      openid: 'frontend_a_dev_user',
+      role: 'USER'
     })
 
     saveLoginResult(result)
@@ -50,12 +43,8 @@ const loginByRole = async (role) => {
     })
   } finally {
     loading.value = false
-    adminLoading.value = false
   }
 }
-
-const handleDevLogin = () => loginByRole('USER')
-const handleAdminLogin = () => loginByRole('ADMIN')
 </script>
 
 <style scoped>
@@ -84,13 +73,4 @@ const handleAdminLogin = () => loginByRole('ADMIN')
   font-size: 32rpx;
 }
 
-.secondary-button {
-  margin-top: 24rpx;
-  height: 88rpx;
-  line-height: 88rpx;
-  border-radius: 12rpx;
-  background: #ffffff;
-  color: #374151;
-  font-size: 30rpx;
-}
 </style>
