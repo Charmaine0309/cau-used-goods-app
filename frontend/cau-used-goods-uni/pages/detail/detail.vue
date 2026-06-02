@@ -24,14 +24,33 @@
     </view>
 
     <view class="button-row">
-      <button class="plain-button">收藏</button>
-      <button class="main-button">提交预约</button>
-      <button class="danger-button">举报</button>
+      <button class="plain-button" @click="favorite">收藏</button>
+      <button class="main-button" @click="reserve">提交预约</button>
+      <button class="danger-button" @click="report">举报</button>
     </view>
   </view>
 </template>
 
 <script setup>
+import { onLoad } from '@dcloudio/uni-app'
+import { ref } from 'vue'
+import { tradeService } from '../../services/trade'
+import { navigate, showError, showSuccess } from '../../utils/navigation'
+
+const productId = ref('1')
+onLoad((options) => { productId.value = options.id || '1' })
+
+const favorite = async () => {
+  try {
+    await tradeService.addFavorite(productId.value)
+    showSuccess('已收藏')
+  } catch (error) {
+    showError(error)
+  }
+}
+
+const reserve = () => navigate('/pages/order/appointment', { productId: productId.value })
+const report = () => navigate('/pages/interaction/report', { targetType: 'PRODUCT', targetId: productId.value })
 </script>
 
 <style scoped>

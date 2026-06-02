@@ -47,6 +47,42 @@
       "style": {
         "navigationBarTitleText": "学生认证"
       }
+    },
+    {
+      "path": "pages/order/appointment",
+      "style": { "navigationBarTitleText": "提交预约" }
+    },
+    {
+      "path": "pages/order/list",
+      "style": { "navigationBarTitleText": "我的订单" }
+    },
+    {
+      "path": "pages/order/detail",
+      "style": { "navigationBarTitleText": "订单详情" }
+    },
+    {
+      "path": "pages/interaction/favorites",
+      "style": { "navigationBarTitleText": "我的收藏" }
+    },
+    {
+      "path": "pages/messages/messages",
+      "style": { "navigationBarTitleText": "消息中心" }
+    },
+    {
+      "path": "pages/interaction/message-detail",
+      "style": { "navigationBarTitleText": "消息详情" }
+    },
+    {
+      "path": "pages/interaction/review",
+      "style": { "navigationBarTitleText": "交易评价" }
+    },
+    {
+      "path": "pages/interaction/report",
+      "style": { "navigationBarTitleText": "提交举报" }
+    },
+    {
+      "path": "pages/interaction/report-list",
+      "style": { "navigationBarTitleText": "我的举报" }
     }
   ],
   "globalStyle": {
