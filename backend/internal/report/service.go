@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"cau-used-goods-app/backend/internal/message"
 	"cau-used-goods-app/backend/internal/sensitive"
 )
 
@@ -12,10 +13,11 @@ type Service struct {
 	repo      *Repository
 	db        *sql.DB
 	sensitive *sensitive.Service
+	message   *message.Service
 }
 
-func NewService(repo *Repository, db *sql.DB, sensitiveService *sensitive.Service) *Service {
-	return &Service{repo: repo, db: db, sensitive: sensitiveService}
+func NewService(repo *Repository, db *sql.DB, sensitiveService *sensitive.Service, messageService *message.Service) *Service {
+	return &Service{repo: repo, db: db, sensitive: sensitiveService, message: messageService}
 }
 
 type CreateReportInput struct {
@@ -154,8 +156,24 @@ func (s *Service) Handle(ctx context.Context, input HandleReportInput) (*ReportD
 	// 写入管理员操作日志
 	_ = s.logAdminAction(ctx, input.HandlerID, input.ReportID, input.Status, input.HandleResult)
 
-	// TODO: 通知举报人处理结果（待 messages 模块实现后对接）
-	// _ = s.notifyReporter(ctx, report.ReporterID, input.ReportID, input.Status)
+	// 通知举报人处理结果
+	if s.message != nil {
+		title := "举报处理结果"
+		content := fmt.Sprintf("你的举报已处理，结果：%s", input.Status)
+		if input.HandleResult != nil {
+			content = fmt.Sprintf("你的举报已处理，结果：%s。处理说明：%s", input.Status, *input.HandleResult)
+		}
+		relatedType := message.RelatedTypeReport
+		_, _ = s.message.Create(ctx, message.CreateMessageInput{
+			ReceiverID:  report.ReporterID,
+			SenderID:    &input.HandlerID,
+			MessageType: message.MessageTypeReportHandled,
+			Title:       title,
+			Content:     content,
+			RelatedType: &relatedType,
+			RelatedID:   &input.ReportID,
+		})
+	}
 
 	return s.GetByID(ctx, input.ReportID)
 }

@@ -9,7 +9,9 @@ import (
 
 	"cau-used-goods-app/backend/internal/admin"
 	"cau-used-goods-app/backend/internal/ai"
+	"cau-used-goods-app/backend/internal/appeal"
 	"cau-used-goods-app/backend/internal/auth"
+	"cau-used-goods-app/backend/internal/chat"
 	"cau-used-goods-app/backend/internal/config"
 	"cau-used-goods-app/backend/internal/db"
 	"cau-used-goods-app/backend/internal/favorite"
@@ -58,12 +60,16 @@ func main() {
 	sensitiveRepo := sensitive.NewRepository(db.DB())
 	sensitiveService := sensitive.NewService(sensitiveRepo)
 
+	messageRepo := message.NewRepository(db.DB())
+	messageService := message.NewService(messageRepo)
+	messageHandler := message.NewHandler(messageService)
+
 	productRepo := product.NewRepository(db.DB())
 	productService := product.NewService(productRepo, sensitiveService)
 	productHandler := product.NewHandler(productService)
 
 	orderRepo := order.NewRepository(db.DB())
-	orderService := order.NewService(orderRepo, productService)
+	orderService := order.NewService(orderRepo, productService, messageService)
 	orderHandler := order.NewHandler(orderService)
 
 	favoriteRepo := favorite.NewRepository(db.DB())
@@ -71,22 +77,26 @@ func main() {
 	favoriteHandler := favorite.NewHandler(favoriteService)
 
 	reviewRepo := review.NewRepository(db.DB())
-	reviewService := review.NewService(reviewRepo)
+	reviewService := review.NewService(reviewRepo, messageService)
 	reviewHandler := review.NewHandler(reviewService)
 
 	reportRepo := report.NewRepository(db.DB())
-	reportService := report.NewService(reportRepo, db.DB(), sensitiveService)
+	reportService := report.NewService(reportRepo, db.DB(), sensitiveService, messageService)
 	reportHandler := report.NewHandler(reportService)
 
-	messageRepo := message.NewRepository(db.DB())
-	messageService := message.NewService(messageRepo)
-	messageHandler := message.NewHandler(messageService)
+	chatRepo := chat.NewRepository(db.DB())
+	chatService := chat.NewService(chatRepo)
+	chatHandler := chat.NewHandler(chatService)
 
 	adminRepo := admin.NewRepository(db.DB())
 	adminService := admin.NewService(adminRepo)
 	adminHandler := admin.NewHandler(adminService)
 	sensitiveService.SetAdminLogger(adminService)
 	sensitiveHandler := sensitive.NewHandler(sensitiveService)
+
+	appealRepo := appeal.NewRepository(db.DB())
+	appealService := appeal.NewService(appealRepo, adminService, messageService)
+	appealHandler := appeal.NewHandler(appealService)
 
 	uploadService := upload.NewService()
 	uploadHandler := upload.NewHandler(uploadService)
@@ -113,11 +123,12 @@ func main() {
 	review.RegisterRoutes(r, reviewHandler, authMiddleware, verifiedMiddleware)
 	report.RegisterRoutes(r, reportHandler, authMiddleware, verifiedMiddleware, adminMiddleware)
 	message.RegisterRoutes(r, messageHandler, authMiddleware)
+	chat.RegisterRoutes(r, chatHandler, authMiddleware, verifiedMiddleware)
+	appeal.RegisterRoutes(r, appealHandler, authMiddleware, verifiedMiddleware, adminMiddleware)
 	admin.RegisterRoutes(r, adminHandler, authMiddleware, adminMiddleware)
 	sensitive.RegisterAdminRoutes(r, sensitiveHandler, authMiddleware, adminMiddleware)
 
-	product.RegisterRoutes(r, productHandler, authMiddleware)
-	product.RegisterAdminRoutes(r, productHandler, authMiddleware, adminMiddleware)
+	product.RegisterRoutes(r, productHandler, authMiddleware, adminMiddleware)
 	upload.RegisterRoutes(r, uploadHandler, authMiddleware)
 	ai.RegisterRoutes(r, aiHandler, authMiddleware)
 	stats.RegisterRoutes(r, statsHandler, authMiddleware, adminMiddleware)

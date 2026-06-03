@@ -9,6 +9,7 @@ const (
 	TargetTypeReport  = "REPORT"
 	TargetTypeNotice  = "NOTICE"
 	TargetTypeWord    = "WORD"
+	TargetTypeAppeal  = "APPEAL"
 )
 
 const (
@@ -25,6 +26,7 @@ const (
 	OperationCreateWord   = "CREATE_WORD"
 	OperationUpdateWord   = "UPDATE_WORD"
 	OperationDeleteWord   = "DELETE_WORD"
+	OperationHandleAppeal = "HANDLE_APPEAL"
 )
 
 type AdminLog struct {

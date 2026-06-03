@@ -28,37 +28,6 @@ func (h *Handler) ListCategories(c *gin.Context) {
 	response.Success(c, list)
 }
 
-func (h *Handler) ListAdminCategories(c *gin.Context) {
-	list, err := h.service.ListAllCategories(c.Request.Context())
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
-		return
-	}
-
-	response.Success(c, list)
-}
-
-type createCategoryRequest struct {
-	Name      string `json:"name" binding:"required"`
-	SortOrder int    `json:"sortOrder"`
-}
-
-func (h *Handler) CreateCategory(c *gin.Context) {
-	var req createCategoryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
-		return
-	}
-
-	id, err := h.service.CreateCategory(c.Request.Context(), req.Name, req.SortOrder)
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
-		return
-	}
-
-	response.Success(c, gin.H{"id": id})
-}
-
 type createProductRequest struct {
 	CategoryID     uint64   `json:"categoryId" binding:"required"`
 	Title          string   `json:"title" binding:"required"`
@@ -67,6 +36,120 @@ type createProductRequest struct {
 	Price          float64  `json:"price" binding:"required"`
 	ConditionLevel string   `json:"conditionLevel"`
 	MeetLocation   string   `json:"meetLocation"`
+}
+
+type createCategoryRequest struct {
+	Name      string `json:"name" binding:"required"`
+	ParentID  uint64 `json:"parentId"`
+	SortOrder int    `json:"sortOrder"`
+	Status    string `json:"status"`
+}
+
+type updateCategoryRequest struct {
+	Name      string `json:"name" binding:"required"`
+	ParentID  uint64 `json:"parentId"`
+	SortOrder int    `json:"sortOrder"`
+	Status    string `json:"status"`
+}
+
+type updateCategoryStatusRequest struct {
+	Status string `json:"status" binding:"required"`
+}
+
+func (h *Handler) AdminListCategories(c *gin.Context) {
+	status := c.Query("status")
+	list, err := h.service.ListAllCategories(c.Request.Context(), status)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		return
+	}
+	response.Success(c, list)
+}
+
+func (h *Handler) AdminCreateCategory(c *gin.Context) {
+	var req createCategoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+
+	id, err := h.service.CreateCategory(c.Request.Context(), CategoryCreateInput{
+		Name:      req.Name,
+		ParentID:  req.ParentID,
+		SortOrder: req.SortOrder,
+		Status:    req.Status,
+	})
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"id": id})
+}
+
+func (h *Handler) AdminUpdateCategory(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || id == 0 {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
+		return
+	}
+
+	var req updateCategoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.service.UpdateCategory(c.Request.Context(), CategoryUpdateInput{
+		ID:        id,
+		Name:      req.Name,
+		ParentID:  req.ParentID,
+		SortOrder: req.SortOrder,
+		Status:    req.Status,
+	}); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"id": id})
+}
+
+func (h *Handler) AdminUpdateCategoryStatus(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || id == 0 {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
+		return
+	}
+
+	var req updateCategoryStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.service.UpdateCategoryStatus(c.Request.Context(), id, req.Status); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		return
+	}
+	response.Success(c, gin.H{
+		"id":     id,
+		"status": req.Status,
+	})
+}
+
+func (h *Handler) AdminDeleteCategory(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || id == 0 {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
+		return
+	}
+
+	if err := h.service.UpdateCategoryStatus(c.Request.Context(), id, "DISABLED"); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		return
+	}
+	response.Success(c, gin.H{
+		"id":     id,
+		"status": "DISABLED",
+	})
 }
 
 func (h *Handler) CreateProduct(c *gin.Context) {
@@ -104,6 +187,7 @@ func (h *Handler) CreateProduct(c *gin.Context) {
 
 func (h *Handler) ListProducts(c *gin.Context) {
 	keyword := c.Query("keyword")
+	conditionLevel := c.Query("conditionLevel")
 	status := c.DefaultQuery("status", "ON_SALE")
 	sort := c.DefaultQuery("sort", "newest")
 
@@ -143,14 +227,15 @@ func (h *Handler) ListProducts(c *gin.Context) {
 	}
 
 	result, err := h.service.ListProducts(c.Request.Context(), ProductListInput{
-		Keyword:    keyword,
-		CategoryID: categoryID,
-		Status:     status,
-		MinPrice:   minPrice,
-		MaxPrice:   maxPrice,
-		Sort:       sort,
-		Page:       page,
-		PageSize:   pageSize,
+		Keyword:        keyword,
+		CategoryID:     categoryID,
+		ConditionLevel: conditionLevel,
+		Status:         status,
+		MinPrice:       minPrice,
+		MaxPrice:       maxPrice,
+		Sort:           sort,
+		Page:           page,
+		PageSize:       pageSize,
 	})
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
