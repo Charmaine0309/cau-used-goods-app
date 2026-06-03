@@ -21,6 +21,7 @@ const (
 	RelatedTypeProduct = "PRODUCT"
 	RelatedTypeReport  = "REPORT"
 	RelatedTypeNotice  = "NOTICE"
+	RelatedTypeAppeal  = "APPEAL"
 )
 
 type Message struct {
