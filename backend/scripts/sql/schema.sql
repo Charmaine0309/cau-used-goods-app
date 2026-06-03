@@ -288,3 +288,42 @@ ON DUPLICATE KEY UPDATE
   `sort_order` = VALUES(`sort_order`),
   `status` = VALUES(`status`),
   `update_time` = CURRENT_TIMESTAMP;
+
+CREATE TABLE IF NOT EXISTS `chat_conversations` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '聊天会话ID',
+  `product_id` BIGINT UNSIGNED NOT NULL COMMENT '关联商品ID',
+  `buyer_id` BIGINT UNSIGNED NOT NULL COMMENT '买家用户ID',
+  `seller_id` BIGINT UNSIGNED NOT NULL COMMENT '卖家用户ID',
+  `last_message_id` BIGINT UNSIGNED NULL COMMENT '最后一条消息ID',
+  `last_message_content` VARCHAR(500) NULL COMMENT '最后一条消息内容',
+  `last_message_time` DATETIME NULL COMMENT '最后一条消息时间',
+  `buyer_unread_count` INT NOT NULL DEFAULT 0 COMMENT '买家未读数',
+  `seller_unread_count` INT NOT NULL DEFAULT 0 COMMENT '卖家未读数',
+  `status` VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE / CLOSED',
+  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_chat_product_buyer_seller` (`product_id`, `buyer_id`, `seller_id`),
+  KEY `idx_chat_buyer_time` (`buyer_id`, `last_message_time`),
+  KEY `idx_chat_seller_time` (`seller_id`, `last_message_time`),
+  CONSTRAINT `fk_chat_conversations_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`),
+  CONSTRAINT `fk_chat_conversations_buyer` FOREIGN KEY (`buyer_id`) REFERENCES `users` (`id`),
+  CONSTRAINT `fk_chat_conversations_seller` FOREIGN KEY (`seller_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='聊天会话表';
+
+CREATE TABLE IF NOT EXISTS `chat_messages` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '聊天消息ID',
+  `conversation_id` BIGINT UNSIGNED NOT NULL COMMENT '聊天会话ID',
+  `sender_id` BIGINT UNSIGNED NOT NULL COMMENT '发送人ID',
+  `receiver_id` BIGINT UNSIGNED NOT NULL COMMENT '接收人ID',
+  `content` VARCHAR(500) NOT NULL COMMENT '消息内容',
+  `message_type` VARCHAR(20) NOT NULL DEFAULT 'TEXT' COMMENT 'TEXT',
+  `read_status` VARCHAR(20) NOT NULL DEFAULT 'UNREAD' COMMENT 'UNREAD / READ',
+  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '发送时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_chat_messages_conversation_time` (`conversation_id`, `create_time`),
+  KEY `idx_chat_messages_receiver_read` (`receiver_id`, `read_status`),
+  CONSTRAINT `fk_chat_messages_conversation` FOREIGN KEY (`conversation_id`) REFERENCES `chat_conversations` (`id`),
+  CONSTRAINT `fk_chat_messages_sender` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`),
+  CONSTRAINT `fk_chat_messages_receiver` FOREIGN KEY (`receiver_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='聊天消息表';

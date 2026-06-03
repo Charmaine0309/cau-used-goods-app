@@ -10,6 +10,7 @@ import (
 	"cau-used-goods-app/backend/internal/admin"
 	"cau-used-goods-app/backend/internal/ai"
 	"cau-used-goods-app/backend/internal/auth"
+	"cau-used-goods-app/backend/internal/chat"
 	"cau-used-goods-app/backend/internal/config"
 	"cau-used-goods-app/backend/internal/db"
 	"cau-used-goods-app/backend/internal/favorite"
@@ -82,6 +83,10 @@ func main() {
 	messageService := message.NewService(messageRepo)
 	messageHandler := message.NewHandler(messageService)
 
+	chatRepo := chat.NewRepository(db.DB())
+	chatService := chat.NewService(chatRepo)
+	chatHandler := chat.NewHandler(chatService)
+
 	adminRepo := admin.NewRepository(db.DB())
 	adminService := admin.NewService(adminRepo)
 	adminHandler := admin.NewHandler(adminService)
@@ -113,6 +118,7 @@ func main() {
 	review.RegisterRoutes(r, reviewHandler, authMiddleware, verifiedMiddleware)
 	report.RegisterRoutes(r, reportHandler, authMiddleware, verifiedMiddleware, adminMiddleware)
 	message.RegisterRoutes(r, messageHandler, authMiddleware)
+	chat.RegisterRoutes(r, chatHandler, authMiddleware, verifiedMiddleware)
 	admin.RegisterRoutes(r, adminHandler, authMiddleware, adminMiddleware)
 	sensitive.RegisterAdminRoutes(r, sensitiveHandler, authMiddleware, adminMiddleware)
 
