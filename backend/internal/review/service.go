@@ -74,7 +74,7 @@ func (s *Service) Create(ctx context.Context, input CreateReviewInput) (*Review,
 			ReceiverID:  sellerID,
 			MessageType: message.MessageTypeSystemNotice,
 			Title:       "收到新评价",
-			Content:     fmt.Sprintf("您的订单收到%f星评价", input.Rating),
+			Content:     fmt.Sprintf("您的订单收到%d星评价", input.Rating),
 			RelatedType: &relatedType,
 			RelatedID:   &input.OrderID,
 		})

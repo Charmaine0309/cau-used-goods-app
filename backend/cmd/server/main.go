@@ -128,7 +128,7 @@ func main() {
 	admin.RegisterRoutes(r, adminHandler, authMiddleware, adminMiddleware)
 	sensitive.RegisterAdminRoutes(r, sensitiveHandler, authMiddleware, adminMiddleware)
 
-	product.RegisterRoutes(r, productHandler, authMiddleware)
+	product.RegisterRoutes(r, productHandler, authMiddleware, adminMiddleware)
 	upload.RegisterRoutes(r, uploadHandler, authMiddleware)
 	ai.RegisterRoutes(r, aiHandler, authMiddleware)
 	stats.RegisterRoutes(r, statsHandler, authMiddleware, adminMiddleware)

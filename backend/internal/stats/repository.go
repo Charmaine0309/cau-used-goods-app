@@ -78,6 +78,19 @@ type ReportOverview struct {
 	OrderReports      int `json:"orderReports"`
 }
 
+type AppealOverview struct {
+	TotalAppeals      int `json:"totalAppeals"`
+	PendingAppeals    int `json:"pendingAppeals"`
+	ProcessingAppeals int `json:"processingAppeals"`
+	ApprovedAppeals   int `json:"approvedAppeals"`
+	RejectedAppeals   int `json:"rejectedAppeals"`
+	ClosedAppeals     int `json:"closedAppeals"`
+	ProductAppeals    int `json:"productAppeals"`
+	UserAppeals       int `json:"userAppeals"`
+	OrderAppeals      int `json:"orderAppeals"`
+	ReportAppeals     int `json:"reportAppeals"`
+}
+
 func (r *Repository) ProductOverview(ctx context.Context) (*ProductOverview, error) {
 	var overview ProductOverview
 
@@ -191,6 +204,39 @@ func (r *Repository) ReportOverview(ctx context.Context) (*ReportOverview, error
 		&overview.ProductReports,
 		&overview.UserReports,
 		&overview.OrderReports,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &overview, nil
+}
+
+func (r *Repository) AppealOverview(ctx context.Context) (*AppealOverview, error) {
+	var overview AppealOverview
+	err := r.db.QueryRowContext(ctx, `
+		SELECT
+			COUNT(*) AS total_appeals,
+			COALESCE(SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END), 0) AS pending_appeals,
+			COALESCE(SUM(CASE WHEN status = 'PROCESSING' THEN 1 ELSE 0 END), 0) AS processing_appeals,
+			COALESCE(SUM(CASE WHEN status = 'APPROVED' THEN 1 ELSE 0 END), 0) AS approved_appeals,
+			COALESCE(SUM(CASE WHEN status = 'REJECTED' THEN 1 ELSE 0 END), 0) AS rejected_appeals,
+			COALESCE(SUM(CASE WHEN status = 'CLOSED' THEN 1 ELSE 0 END), 0) AS closed_appeals,
+			COALESCE(SUM(CASE WHEN target_type = 'PRODUCT' THEN 1 ELSE 0 END), 0) AS product_appeals,
+			COALESCE(SUM(CASE WHEN target_type = 'USER' THEN 1 ELSE 0 END), 0) AS user_appeals,
+			COALESCE(SUM(CASE WHEN target_type = 'ORDER' THEN 1 ELSE 0 END), 0) AS order_appeals,
+			COALESCE(SUM(CASE WHEN target_type = 'REPORT' THEN 1 ELSE 0 END), 0) AS report_appeals
+		FROM appeals
+	`).Scan(
+		&overview.TotalAppeals,
+		&overview.PendingAppeals,
+		&overview.ProcessingAppeals,
+		&overview.ApprovedAppeals,
+		&overview.RejectedAppeals,
+		&overview.ClosedAppeals,
+		&overview.ProductAppeals,
+		&overview.UserAppeals,
+		&overview.OrderAppeals,
+		&overview.ReportAppeals,
 	)
 	if err != nil {
 		return nil, err
