@@ -1,14 +1,19 @@
 <template>
   <view class="page">
     <view class="search-row">
-      <input class="search-input" v-model="keyword" placeholder="请输入关键词" />
-      <button class="search-button">搜索</button>
+      <input class="search-input" v-model="keyword" placeholder="请输入关键词" confirm-type="search" @confirm="loadProducts" />
+      <button class="search-button" @click="loadProducts">搜索</button>
     </view>
 
     <view class="filter-row">
-      <view class="filter-item">分类</view>
-      <view class="filter-item">价格</view>
-      <view class="filter-item">成色</view>
+      <view
+        v-for="item in sortOptions"
+        :key="item.value"
+        :class="['filter-item', sort === item.value ? 'active' : '']"
+        @click="changeSort(item.value)"
+      >
+        {{ item.label }}
+      </view>
     </view>
 
     <view class="goods-list">
@@ -18,36 +23,85 @@
         :key="item.id"
         @click="goDetail(item.id)"
       >
-        <view class="goods-image"></view>
+        <image v-if="item.image" class="goods-image" :src="item.image" mode="aspectFill" />
+        <view v-else class="goods-image placeholder">{{ item.categoryName || '商品' }}</view>
         <view class="goods-info">
           <view class="goods-title">{{ item.title }}</view>
-          <view class="goods-desc">{{ item.condition }}</view>
+          <view class="goods-desc">{{ conditionText(item.conditionLevel) }}</view>
           <view class="goods-price">￥{{ item.price }}</view>
         </view>
       </view>
     </view>
+
+    <view v-if="!loading && goodsList.length === 0" class="empty">暂无在售商品</view>
   </view>
 </template>
 
 <script setup>
 import { ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { listProducts } from '../../api/product'
 
 const keyword = ref('')
+const goodsList = ref([])
+const loading = ref(false)
+const sort = ref('newest')
 
-const goodsList = [
-  {
-    id: 1,
-    title: '高等数学教材',
-    condition: '八成新',
-    price: 20
-  },
-  {
-    id: 2,
-    title: '蓝牙耳机',
-    condition: '九成新',
-    price: 68
-  }
+const categoryNameMap = {
+  1: '教材资料',
+  2: '电子产品',
+  3: '生活用品',
+  4: '服饰鞋包',
+  5: '运动户外',
+  6: '其他'
+}
+
+const sortOptions = [
+  { label: '最新', value: 'newest' },
+  { label: '低价', value: 'price_asc' },
+  { label: '高价', value: 'price_desc' }
 ]
+
+onShow(loadProducts)
+
+const loadProducts = async () => {
+  loading.value = true
+  try {
+    const result = await listProducts({
+      keyword: keyword.value,
+      status: 'ON_SALE',
+      page: 1,
+      pageSize: 20,
+      sort: sort.value
+    })
+    goodsList.value = (result?.list || []).map((item) => ({
+      ...item,
+      image: item.images?.[0] || '',
+      categoryName: categoryNameMap[item.categoryId] || '商品'
+    }))
+  } catch (error) {
+    uni.showToast({ title: error.message || '搜索失败', icon: 'none' })
+  } finally {
+    loading.value = false
+  }
+}
+
+const changeSort = (value) => {
+  if (sort.value === value) return
+  sort.value = value
+  loadProducts()
+}
+
+const conditionText = (level) => {
+  const map = {
+    NEW: '全新',
+    LIKE_NEW: '九成新',
+    GOOD: '八成新',
+    FAIR: '七成新',
+    OLD: '旧物'
+  }
+  return map[level] || level || '成色未填写'
+}
 
 const goDetail = (id) => {
   uni.navigateTo({
@@ -106,6 +160,11 @@ const goDetail = (id) => {
   color: #374151;
 }
 
+.filter-item.active {
+  background: #1aad19;
+  color: #ffffff;
+}
+
 .goods-list {
   display: flex;
   flex-direction: column;
@@ -125,6 +184,14 @@ const goDetail = (id) => {
   border-radius: 12rpx;
   background: #d1d5db;
   flex-shrink: 0;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7b8794;
+  font-size: 24rpx;
 }
 
 .goods-info {
@@ -149,5 +216,12 @@ const goDetail = (id) => {
   font-size: 32rpx;
   font-weight: 700;
   color: #e11d48;
+}
+
+.empty {
+  margin-top: 40rpx;
+  text-align: center;
+  color: #98a2b3;
+  font-size: 28rpx;
 }
 </style>

@@ -21,13 +21,18 @@ const goHome = () => {
   })
 }
 
+const goAdmin = () => {
+  uni.reLaunch({
+    url: '/pages/admin/admin'
+  })
+}
+
 const handleDevLogin = async () => {
   if (loading.value) return
   loading.value = true
   try {
     const result = await devLogin({
-      openid: 'frontend_a_dev_user',
-      role: 'USER'
+      openid: 'frontend_a_dev_user'
     })
 
     saveLoginResult(result)
@@ -35,6 +40,10 @@ const handleDevLogin = async () => {
       title: '登录成功',
       icon: 'success'
     })
+    if (result?.user?.role === 'ADMIN') {
+      goAdmin()
+      return
+    }
     goHome()
   } catch (error) {
     uni.showToast({

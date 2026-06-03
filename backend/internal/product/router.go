@@ -18,3 +18,12 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware gin.HandlerF
 		products.DELETE("/:id", handler.DeleteProduct)
 	}
 }
+
+func RegisterAdminRoutes(r *gin.Engine, handler *Handler, authMiddleware, adminMiddleware gin.HandlerFunc) {
+	group := r.Group("/admin/categories")
+	group.Use(authMiddleware, adminMiddleware)
+	{
+		group.GET("", handler.ListAdminCategories)
+		group.POST("", handler.CreateCategory)
+	}
+}

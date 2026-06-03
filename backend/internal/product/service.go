@@ -24,6 +24,25 @@ func (s *Service) ListCategories(ctx context.Context) ([]Category, error) {
 	return s.repo.ListCategories(ctx)
 }
 
+func (s *Service) ListAllCategories(ctx context.Context) ([]Category, error) {
+	return s.repo.ListAllCategories(ctx)
+}
+
+func (s *Service) CreateCategory(ctx context.Context, name string, sortOrder int) (uint64, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return 0, fmt.Errorf("分类名称不能为空")
+	}
+	if len([]rune(name)) > 20 {
+		return 0, fmt.Errorf("分类名称不能超过20个字")
+	}
+	if sortOrder <= 0 {
+		sortOrder = 100
+	}
+
+	return s.repo.CreateCategory(ctx, name, sortOrder)
+}
+
 type ProductCreateInput struct {
 	SellerID       uint64
 	CategoryID     uint64
@@ -118,7 +137,10 @@ func (s *Service) UpdateProduct(ctx context.Context, input ProductUpdateInput) e
 	})
 }
 
-func (s *Service) UpdateProductStatus(ctx context.Context, productID uint64, sellerID uint64, status string, reason string) error {
+func (s *Service) UpdateProductStatus(ctx context.Context, productID uint64, sellerID uint64, role string, status string, reason string) error {
+	if role == "ADMIN" {
+		return s.repo.UpdateProductStatusByAdmin(ctx, productID, sellerID, status, reason)
+	}
 	return s.repo.UpdateProductStatus(ctx, productID, sellerID, status, reason)
 }
 

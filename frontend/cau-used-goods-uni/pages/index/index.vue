@@ -5,14 +5,14 @@
       <view v-else class="avatar placeholder">头像</view>
       <view class="profile-main">
         <view class="nickname">{{ user.nickname || '微信用户' }}</view>
-        <view class="status">学生认证：{{ authText }}</view>
+        <view class="status">{{ identityText }}</view>
       </view>
       <button class="edit-button" size="mini" @click="goProfileEdit">修改资料</button>
     </view>
 
     <view class="menu-card">
-      <view class="menu-item" @click="goStudentAuth">学生认证</view>
-      <view class="menu-item" @click="goAddress">地址管理</view>
+      <view v-if="!isAdmin" class="menu-item" @click="goStudentAuth">学生认证</view>
+      <view v-if="!isAdmin" class="menu-item" @click="goAddress">地址管理</view>
       <view v-if="isAdmin" class="menu-item" @click="goAdmin">后台管理</view>
     </view>
 
@@ -38,6 +38,7 @@ const authMap = {
 
 const authText = computed(() => authMap[user.value?.authStatus] || '未认证')
 const isAdmin = computed(() => user.value?.role === 'ADMIN')
+const identityText = computed(() => isAdmin.value ? '管理员' : `学生认证：${authText.value}`)
 const avatarUrl = computed(() => {
   const url = user.value?.avatarUrl || ''
   if (!url) return ''

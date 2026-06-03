@@ -297,6 +297,18 @@ func (h *Handler) ListStudentVerifications(c *gin.Context) {
 	response.Success(c, gin.H{"items": items})
 }
 
+func (h *Handler) ListUsers(c *gin.Context) {
+	items, err := h.service.ListUsers(c.Request.Context())
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"items": items,
+		"total": len(items),
+	})
+}
+
 func (h *Handler) ReviewStudentVerification(c *gin.Context) {
 	adminID, ok := middleware.CurrentUserID(c)
 	if !ok {

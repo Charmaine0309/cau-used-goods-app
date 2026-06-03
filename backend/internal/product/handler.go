@@ -28,6 +28,37 @@ func (h *Handler) ListCategories(c *gin.Context) {
 	response.Success(c, list)
 }
 
+func (h *Handler) ListAdminCategories(c *gin.Context) {
+	list, err := h.service.ListAllCategories(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
+		return
+	}
+
+	response.Success(c, list)
+}
+
+type createCategoryRequest struct {
+	Name      string `json:"name" binding:"required"`
+	SortOrder int    `json:"sortOrder"`
+}
+
+func (h *Handler) CreateCategory(c *gin.Context) {
+	var req createCategoryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+
+	id, err := h.service.CreateCategory(c.Request.Context(), req.Name, req.SortOrder)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{"id": id})
+}
+
 type createProductRequest struct {
 	CategoryID     uint64   `json:"categoryId" binding:"required"`
 	Title          string   `json:"title" binding:"required"`
@@ -268,7 +299,8 @@ func (h *Handler) UpdateProductStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.UpdateProductStatus(c.Request.Context(), productID, userID, req.Status, req.Reason); err != nil {
+	role, _ := middleware.CurrentRole(c)
+	if err := h.service.UpdateProductStatus(c.Request.Context(), productID, userID, role, req.Status, req.Reason); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "product not found or status cannot be changed")
 		return
 	}

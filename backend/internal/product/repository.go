@@ -62,6 +62,44 @@ func (r *Repository) ListCategories(ctx context.Context) ([]Category, error) {
 	return list, rows.Err()
 }
 
+func (r *Repository) ListAllCategories(ctx context.Context) ([]Category, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, name, parent_id, sort_order, status
+		FROM categories
+		ORDER BY sort_order ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []Category
+	for rows.Next() {
+		var c Category
+		if err := rows.Scan(&c.ID, &c.Name, &c.ParentID, &c.SortOrder, &c.Status); err != nil {
+			return nil, err
+		}
+		list = append(list, c)
+	}
+	return list, rows.Err()
+}
+
+func (r *Repository) CreateCategory(ctx context.Context, name string, sortOrder int) (uint64, error) {
+	result, err := r.db.ExecContext(ctx, `
+		INSERT INTO categories (name, parent_id, sort_order, status)
+		VALUES (?, 0, ?, 'ENABLED')
+	`, name, sortOrder)
+	if err != nil {
+		return 0, err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	return uint64(id), nil
+}
+
 type CreateProductInput struct {
 	SellerID       uint64
 	CategoryID     uint64
@@ -413,6 +451,64 @@ func (r *Repository) UpdateProductStatus(ctx context.Context, productID uint64, 
 	}
 
 	return checkAffected(result)
+}
+
+func (r *Repository) UpdateProductStatusByAdmin(ctx context.Context, productID uint64, adminID uint64, status string, reason string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE products
+		SET status = ?,
+		    off_shelf_reason = ?,
+		    update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+		  AND is_deleted = 0
+		  AND (
+		      (? = 'OFF_SHELF' AND status = 'ON_SALE')
+		      OR
+		      (? = 'ON_SALE' AND status = 'OFF_SHELF')
+		  )
+	`,
+		status, reason, productID, status, status,
+	)
+	if err != nil {
+		return err
+	}
+	if err := checkAffected(result); err != nil {
+		return err
+	}
+
+	operationType := "PRODUCT_ON_SALE"
+	if status == "OFF_SHELF" {
+		operationType = "PRODUCT_OFF_SHELF"
+	}
+	description := reason
+	if description == "" {
+		description = "管理员更新商品状态"
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, create_time)
+		VALUES (?, ?, 'PRODUCT', ?, ?, NOW())
+	`, adminID, operationType, productID, description); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 type AddProductImagesInput struct {
