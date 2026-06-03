@@ -102,14 +102,15 @@ func (r *Repository) CreateProduct(ctx context.Context, input CreateProductInput
 }
 
 type ListProductsInput struct {
-	Keyword    string
-	CategoryID uint64
-	Status     string
-	MinPrice   *float64
-	MaxPrice   *float64
-	Sort       string
-	Page       int
-	PageSize   int
+	Keyword        string
+	CategoryID     uint64
+	ConditionLevel string
+	Status         string
+	MinPrice       *float64
+	MaxPrice       *float64
+	Sort           string
+	Page           int
+	PageSize       int
 }
 
 type ProductListResult struct {
@@ -150,6 +151,11 @@ func (r *Repository) ListProducts(ctx context.Context, input ListProductsInput) 
 	if input.CategoryID > 0 {
 		where += " AND category_id = ? "
 		args = append(args, input.CategoryID)
+	}
+
+	if input.ConditionLevel != "" {
+		where += " AND condition_level = ? "
+		args = append(args, input.ConditionLevel)
 	}
 
 	if input.MinPrice != nil {
@@ -194,7 +200,7 @@ func (r *Repository) ListProducts(ctx context.Context, input ListProductsInput) 
 	}
 	defer rows.Close()
 
-	var list []Product
+	list := make([]Product, 0)
 	for rows.Next() {
 		var p Product
 		var desc sql.NullString
@@ -275,7 +281,7 @@ func (r *Repository) ListProductImages(ctx context.Context, productID uint64) ([
 	}
 	defer rows.Close()
 
-	var images []string
+	images := make([]string, 0)
 	for rows.Next() {
 		var url string
 		if err := rows.Scan(&url); err != nil {
@@ -301,7 +307,7 @@ func (r *Repository) ListMyProducts(ctx context.Context, sellerID uint64) ([]Pro
 	}
 	defer rows.Close()
 
-	var list []Product
+	list := make([]Product, 0)
 	for rows.Next() {
 		var p Product
 		var desc sql.NullString

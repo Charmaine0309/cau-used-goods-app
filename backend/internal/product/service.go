@@ -53,26 +53,28 @@ func (s *Service) CreateProduct(ctx context.Context, input ProductCreateInput) (
 }
 
 type ProductListInput struct {
-	Keyword    string
-	CategoryID uint64
-	Status     string
-	MinPrice   *float64
-	MaxPrice   *float64
-	Sort       string
-	Page       int
-	PageSize   int
+	Keyword        string
+	CategoryID     uint64
+	ConditionLevel string
+	Status         string
+	MinPrice       *float64
+	MaxPrice       *float64
+	Sort           string
+	Page           int
+	PageSize       int
 }
 
 func (s *Service) ListProducts(ctx context.Context, input ProductListInput) (*ProductListResult, error) {
 	return s.repo.ListProducts(ctx, ListProductsInput{
-		Keyword:    input.Keyword,
-		CategoryID: input.CategoryID,
-		Status:     input.Status,
-		MinPrice:   input.MinPrice,
-		MaxPrice:   input.MaxPrice,
-		Sort:       input.Sort,
-		Page:       input.Page,
-		PageSize:   input.PageSize,
+		Keyword:        input.Keyword,
+		CategoryID:     input.CategoryID,
+		ConditionLevel: input.ConditionLevel,
+		Status:         input.Status,
+		MinPrice:       input.MinPrice,
+		MaxPrice:       input.MaxPrice,
+		Sort:           input.Sort,
+		Page:           input.Page,
+		PageSize:       input.PageSize,
 	})
 }
 

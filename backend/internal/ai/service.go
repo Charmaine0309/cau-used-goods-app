@@ -50,6 +50,10 @@ type glmResponse struct {
 }
 
 func (s *Service) OptimizeProduct(ctx context.Context, req OptimizeRequest) (*OptimizeResponse, error) {
+	if strings.TrimSpace(s.apiKey) == "" {
+		return nil, fmt.Errorf("AI服务暂不可用：未配置 API Key")
+	}
+
 	title := strings.TrimSpace(req.Title)
 	description := strings.TrimSpace(req.Description)
 

@@ -73,6 +73,7 @@ func (h *Handler) CreateProduct(c *gin.Context) {
 
 func (h *Handler) ListProducts(c *gin.Context) {
 	keyword := c.Query("keyword")
+	conditionLevel := c.Query("conditionLevel")
 	status := c.DefaultQuery("status", "ON_SALE")
 	sort := c.DefaultQuery("sort", "newest")
 
@@ -112,14 +113,15 @@ func (h *Handler) ListProducts(c *gin.Context) {
 	}
 
 	result, err := h.service.ListProducts(c.Request.Context(), ProductListInput{
-		Keyword:    keyword,
-		CategoryID: categoryID,
-		Status:     status,
-		MinPrice:   minPrice,
-		MaxPrice:   maxPrice,
-		Sort:       sort,
-		Page:       page,
-		PageSize:   pageSize,
+		Keyword:        keyword,
+		CategoryID:     categoryID,
+		ConditionLevel: conditionLevel,
+		Status:         status,
+		MinPrice:       minPrice,
+		MaxPrice:       maxPrice,
+		Sort:           sort,
+		Page:           page,
+		PageSize:       pageSize,
 	})
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
