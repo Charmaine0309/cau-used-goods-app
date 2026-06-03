@@ -2,6 +2,9 @@
   <view class="page">
     <view class="section-title">商品状态</view>
 
+    <image v-if="mainImage" class="product-image" :src="mainImage" mode="aspectFill" @click="previewProductImage" />
+    <view v-else class="product-image placeholder">暂无图片</view>
+
     <view class="card">
       <view class="name">{{ product.title || '商品' }}</view>
       <view class="price">￥{{ product.price || 0 }}</view>
@@ -9,11 +12,6 @@
       <view class="desc">当前状态：{{ statusText(product.status) }}</view>
       <view class="desc">成色：{{ conditionText(product.conditionLevel) }}</view>
       <view class="desc">交易地点：{{ product.meetLocation || '线下面交' }}</view>
-    </view>
-
-    <view class="card">
-      <view class="section-subtitle">商品描述</view>
-      <view class="desc">{{ product.description || '暂无商品描述' }}</view>
     </view>
 
     <view class="actions">
@@ -24,13 +22,15 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { updateAdminProductStatus } from '../../api/admin'
 import { getProductById } from '../../api/product'
+import { normalizeImage } from '../../utils/product-format'
 
 const product = ref({})
 const productId = ref('')
+const mainImage = computed(() => normalizeImage(product.value?.images?.[0] || ''))
 
 onLoad((query = {}) => {
   productId.value = query.id || ''
@@ -68,12 +68,19 @@ const conditionText = (level) => {
   const map = { NEW: '全新', LIKE_NEW: '九成新', GOOD: '八成新', FAIR: '七成新', OLD: '旧物' }
   return map[level] || level || '成色未填写'
 }
+
+const previewProductImage = () => {
+  const urls = (product.value?.images || []).map((url) => normalizeImage(url)).filter(Boolean)
+  if (!urls.length) return
+  uni.previewImage({ current: urls[0], urls })
+}
 </script>
 
 <style scoped>
 .page { min-height: 100vh; padding: 24rpx; background: #f5f6f8; box-sizing: border-box; }
 .section-title { margin: 24rpx 0 18rpx; font-size: 32rpx; font-weight: 700; color: #1f2933; }
-.section-subtitle { font-size: 30rpx; font-weight: 700; color: #1f2933; }
+.product-image { width: 100%; height: 360rpx; margin-bottom: 18rpx; border-radius: 16rpx; background: #eef2f6; }
+.placeholder { display: flex; align-items: center; justify-content: center; color: #98a2b3; font-size: 28rpx; }
 .card { padding: 28rpx; border-radius: 16rpx; background: #fff; margin-bottom: 18rpx; }
 .name { font-size: 34rpx; font-weight: 700; color: #1f2933; }
 .price { margin-top: 18rpx; font-size: 40rpx; font-weight: 700; color: #e11d48; }

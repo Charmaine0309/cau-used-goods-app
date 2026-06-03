@@ -103,7 +103,8 @@ const reserve = async () => {
 const report = async () => {
   try {
     await createReport({
-      productId: product.value.id,
+      targetType: 'PRODUCT',
+      targetId: product.value.id,
       reasonType: 'OTHER',
       description: '用户提交商品举报'
     })

@@ -16,6 +16,10 @@ export const getReportOverview = () => {
   return request({ url: '/stats/reports/overview' })
 }
 
+export const getAppealOverview = () => {
+  return request({ url: '/stats/appeals/overview' })
+}
+
 export const getCategoryDistribution = () => {
   return request({ url: '/stats/products/category-distribution' })
 }
@@ -88,13 +92,30 @@ export const getAdminReports = () => {
   })
 }
 
-export const handleAdminReport = (reportId, status) => {
+export const handleAdminReport = (reportId, status, handleResult) => {
   return request({
     url: `/admin/reports/${reportId}/handle`,
     method: 'POST',
     data: {
       status,
-      handleResult: status === 'RESOLVED' ? '举报已处理' : '举报已驳回'
+      handleResult: handleResult || (status === 'PROCESSING' ? '举报处理中' : status === 'RESOLVED' ? '举报已处理' : '举报已驳回')
+    }
+  })
+}
+
+export const getAdminAppeals = () => {
+  return request({
+    url: '/admin/appeals?page=1&pageSize=20'
+  })
+}
+
+export const handleAdminAppeal = (appealId, status, handleResult) => {
+  return request({
+    url: `/admin/appeals/${appealId}/handle`,
+    method: 'POST',
+    data: {
+      status,
+      handleResult: handleResult || (status === 'PROCESSING' ? '申诉处理中' : status === 'APPROVED' ? '申诉已通过' : '申诉已驳回')
     }
   })
 }

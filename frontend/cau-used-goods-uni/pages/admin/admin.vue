@@ -77,10 +77,10 @@
               {{ reportOverview.pendingReports ? '需处理' : '正常' }}
             </text>
           </view>
-          <view :class="['overview-main', reportOverview.pendingReports ? 'danger' : '']">
-            {{ reportOverview.pendingReports || 0 }}
+          <view :class="['overview-main', riskTodoCount ? 'danger' : '']">
+            {{ riskTodoCount }}
           </view>
-          <view class="overview-sub">待处理举报</view>
+          <view class="overview-sub">待处理申诉和举报</view>
           <view class="overview-row">
             <text>商品举报</text>
             <text>{{ reportOverview.productReports || 0 }}</text>
@@ -162,8 +162,8 @@
           <view class="todo-label">待认证审核</view>
         </view>
         <view class="todo-card" @click="goPage('/pages/admin-reports/admin-reports')">
-          <view class="todo-number">{{ reportOverview.pendingReports || 0 }}</view>
-          <view class="todo-label">待处理举报</view>
+          <view class="todo-number">{{ riskTodoCount }}</view>
+          <view class="todo-label">待处理申诉和举报</view>
         </view>
       </view>
 
@@ -189,7 +189,7 @@
           <view class="manage-title">公告管理</view>
           <view class="manage-desc">发布 / 下线</view>
         </view>
-        <view class="manage-card" @click="showPendingFeature('申诉统计接口待后端提供')">
+        <view class="manage-card" @click="goPage('/pages/admin-stats/admin-stats')">
           <view class="manage-title">申诉统计</view>
           <view class="manage-desc">申诉数据</view>
         </view>
@@ -242,10 +242,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import {
   getCategoryDistribution,
+  getAppealOverview,
   getOrderOverview,
   getProductOverview,
   getProductTrend,
@@ -261,17 +262,23 @@ const userOverview = ref({})
 const productOverview = ref({})
 const orderOverview = ref({})
 const reportOverview = ref({})
+const appealOverview = ref({})
 const categoryDistribution = ref([])
 const productTrend = ref([])
 
+const riskTodoCount = computed(() => {
+  return Number(reportOverview.value.pendingReports || 0) + Number(appealOverview.value.pendingAppeals || 0)
+})
+
 const loadAdminData = async () => {
   try {
-    const [me, users, productStats, orders, reportStats, categories, trend] = await Promise.all([
+    const [me, users, productStats, orders, reportStats, appealStats, categories, trend] = await Promise.all([
       getCurrentUser(),
       getUserOverview(),
       getProductOverview(),
       getOrderOverview(),
       getReportOverview(),
+      getAppealOverview(),
       getCategoryDistribution(),
       getProductTrend(7)
     ])
@@ -281,6 +288,7 @@ const loadAdminData = async () => {
     productOverview.value = productStats || {}
     orderOverview.value = orders || {}
     reportOverview.value = reportStats || {}
+    appealOverview.value = appealStats || {}
     categoryDistribution.value = categories || []
     productTrend.value = trend?.list || trend || []
   } catch (error) {
@@ -296,10 +304,6 @@ const switchTab = (tab) => {
 
 const goPage = (url) => {
   uni.navigateTo({ url })
-}
-
-const showPendingFeature = (title) => {
-  uni.showToast({ title, icon: 'none' })
 }
 
 const logout = () => {

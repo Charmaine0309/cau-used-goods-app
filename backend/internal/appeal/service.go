@@ -160,8 +160,8 @@ func validateHandleInput(input HandleAppealInput) error {
 	if input.AdminID == 0 {
 		return fmt.Errorf("adminId is required")
 	}
-	if input.Status != StatusApproved && input.Status != StatusRejected && input.Status != StatusClosed {
-		return fmt.Errorf("status must be APPROVED, REJECTED or CLOSED")
+	if input.Status != StatusProcessing && input.Status != StatusApproved && input.Status != StatusRejected && input.Status != StatusClosed {
+		return fmt.Errorf("status must be PROCESSING, APPROVED, REJECTED or CLOSED")
 	}
 	if input.HandleResult == "" {
 		return fmt.Errorf("handleResult is required")

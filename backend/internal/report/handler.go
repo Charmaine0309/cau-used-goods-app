@@ -117,7 +117,7 @@ func (h *Handler) ListAll(c *gin.Context) {
 }
 
 type handleReportRequest struct {
-	Status       string  `json:"status" binding:"required,oneof=RESOLVED REJECTED CLOSED"`
+	Status       string  `json:"status" binding:"required,oneof=PROCESSING RESOLVED REJECTED CLOSED"`
 	HandleResult *string `json:"handleResult"`
 }
 

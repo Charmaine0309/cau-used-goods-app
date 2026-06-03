@@ -190,7 +190,7 @@ func writeAppealError(c *gin.Context, err error) {
 	case "invalid targetType", "invalid status", "appellantId is required", "targetType must be PRODUCT, USER, ORDER or REPORT",
 		"targetId is required", "reason is required", "reason cannot exceed 500 characters",
 		"evidenceUrls cannot exceed 9", "appealId is required", "adminId is required",
-		"status must be APPROVED, REJECTED or CLOSED", "handleResult is required",
+		"status must be PROCESSING, APPROVED, REJECTED or CLOSED", "handleResult is required",
 		"handleResult cannot exceed 500 characters":
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, message)
 	default:
