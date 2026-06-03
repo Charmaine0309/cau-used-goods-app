@@ -13,5 +13,6 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, adminMiddle
 		group.GET("/orders/overview", handler.OrderOverview)
 		group.GET("/users/overview", handler.UserOverview)
 		group.GET("/reports/overview", handler.ReportOverview)
+		group.GET("/appeals/overview", handler.AppealOverview)
 	}
 }

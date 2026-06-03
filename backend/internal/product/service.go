@@ -24,6 +24,98 @@ func (s *Service) ListCategories(ctx context.Context) ([]Category, error) {
 	return s.repo.ListCategories(ctx)
 }
 
+func (s *Service) ListAllCategories(ctx context.Context, status string) ([]Category, error) {
+	status = strings.TrimSpace(status)
+	if status != "" && !isValidCategoryStatus(status) {
+		return nil, fmt.Errorf("invalid category status")
+	}
+	return s.repo.ListAllCategories(ctx, status)
+}
+
+type CategoryCreateInput struct {
+	Name      string
+	ParentID  uint64
+	SortOrder int
+	Status    string
+}
+
+func (s *Service) CreateCategory(ctx context.Context, input CategoryCreateInput) (uint64, error) {
+	input.Name = strings.TrimSpace(input.Name)
+	input.Status = strings.TrimSpace(input.Status)
+	if input.Status == "" {
+		input.Status = "ENABLED"
+	}
+	if err := validateCategoryInput(input.Name, input.Status); err != nil {
+		return 0, err
+	}
+	return s.repo.CreateCategory(ctx, CreateCategoryInput{
+		Name:      input.Name,
+		ParentID:  input.ParentID,
+		SortOrder: input.SortOrder,
+		Status:    input.Status,
+	})
+}
+
+type CategoryUpdateInput struct {
+	ID        uint64
+	Name      string
+	ParentID  uint64
+	SortOrder int
+	Status    string
+}
+
+func (s *Service) UpdateCategory(ctx context.Context, input CategoryUpdateInput) error {
+	input.Name = strings.TrimSpace(input.Name)
+	input.Status = strings.TrimSpace(input.Status)
+	if input.Status == "" {
+		input.Status = "ENABLED"
+	}
+	if input.ID == 0 {
+		return fmt.Errorf("category id is required")
+	}
+	if err := validateCategoryInput(input.Name, input.Status); err != nil {
+		return err
+	}
+	if input.ParentID == input.ID {
+		return fmt.Errorf("category parent cannot be itself")
+	}
+	return s.repo.UpdateCategory(ctx, UpdateCategoryInput{
+		ID:        input.ID,
+		Name:      input.Name,
+		ParentID:  input.ParentID,
+		SortOrder: input.SortOrder,
+		Status:    input.Status,
+	})
+}
+
+func (s *Service) UpdateCategoryStatus(ctx context.Context, id uint64, status string) error {
+	status = strings.TrimSpace(status)
+	if id == 0 {
+		return fmt.Errorf("category id is required")
+	}
+	if !isValidCategoryStatus(status) {
+		return fmt.Errorf("invalid category status")
+	}
+	return s.repo.UpdateCategoryStatus(ctx, id, status)
+}
+
+func validateCategoryInput(name string, status string) error {
+	if name == "" {
+		return fmt.Errorf("category name is required")
+	}
+	if len([]rune(name)) > 50 {
+		return fmt.Errorf("category name cannot exceed 50 characters")
+	}
+	if !isValidCategoryStatus(status) {
+		return fmt.Errorf("invalid category status")
+	}
+	return nil
+}
+
+func isValidCategoryStatus(status string) bool {
+	return status == "ENABLED" || status == "DISABLED"
+}
+
 type ProductCreateInput struct {
 	SellerID       uint64
 	CategoryID     uint64

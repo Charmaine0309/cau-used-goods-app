@@ -62,6 +62,91 @@ func (r *Repository) ListCategories(ctx context.Context) ([]Category, error) {
 	return list, rows.Err()
 }
 
+func (r *Repository) ListAllCategories(ctx context.Context, status string) ([]Category, error) {
+	query := `
+		SELECT id, name, parent_id, sort_order, status
+		FROM categories
+		WHERE 1 = 1
+	`
+	args := []interface{}{}
+	if status != "" {
+		query += " AND status = ?"
+		args = append(args, status)
+	}
+	query += " ORDER BY sort_order ASC, id ASC"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []Category
+	for rows.Next() {
+		var c Category
+		if err := rows.Scan(&c.ID, &c.Name, &c.ParentID, &c.SortOrder, &c.Status); err != nil {
+			return nil, err
+		}
+		list = append(list, c)
+	}
+	return list, rows.Err()
+}
+
+type CreateCategoryInput struct {
+	Name      string
+	ParentID  uint64
+	SortOrder int
+	Status    string
+}
+
+func (r *Repository) CreateCategory(ctx context.Context, input CreateCategoryInput) (uint64, error) {
+	result, err := r.db.ExecContext(ctx, `
+		INSERT INTO categories (name, parent_id, sort_order, status)
+		VALUES (?, ?, ?, ?)
+	`, input.Name, input.ParentID, input.SortOrder, input.Status)
+	if err != nil {
+		return 0, err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	return uint64(id), nil
+}
+
+type UpdateCategoryInput struct {
+	ID        uint64
+	Name      string
+	ParentID  uint64
+	SortOrder int
+	Status    string
+}
+
+func (r *Repository) UpdateCategory(ctx context.Context, input UpdateCategoryInput) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE categories
+		SET name = ?, parent_id = ?, sort_order = ?, status = ?, update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, input.Name, input.ParentID, input.SortOrder, input.Status, input.ID)
+	if err != nil {
+		return err
+	}
+	return checkAffected(result)
+}
+
+func (r *Repository) UpdateCategoryStatus(ctx context.Context, id uint64, status string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE categories
+		SET status = ?, update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, status, id)
+	if err != nil {
+		return err
+	}
+	return checkAffected(result)
+}
+
 type CreateProductInput struct {
 	SellerID       uint64
 	CategoryID     uint64
