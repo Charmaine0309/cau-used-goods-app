@@ -9,6 +9,7 @@ import (
 
 	"cau-used-goods-app/backend/internal/admin"
 	"cau-used-goods-app/backend/internal/ai"
+	"cau-used-goods-app/backend/internal/appeal"
 	"cau-used-goods-app/backend/internal/auth"
 	"cau-used-goods-app/backend/internal/chat"
 	"cau-used-goods-app/backend/internal/config"
@@ -93,6 +94,10 @@ func main() {
 	sensitiveService.SetAdminLogger(adminService)
 	sensitiveHandler := sensitive.NewHandler(sensitiveService)
 
+	appealRepo := appeal.NewRepository(db.DB())
+	appealService := appeal.NewService(appealRepo, adminService, messageService)
+	appealHandler := appeal.NewHandler(appealService)
+
 	uploadService := upload.NewService()
 	uploadHandler := upload.NewHandler(uploadService)
 
@@ -119,6 +124,7 @@ func main() {
 	report.RegisterRoutes(r, reportHandler, authMiddleware, verifiedMiddleware, adminMiddleware)
 	message.RegisterRoutes(r, messageHandler, authMiddleware)
 	chat.RegisterRoutes(r, chatHandler, authMiddleware, verifiedMiddleware)
+	appeal.RegisterRoutes(r, appealHandler, authMiddleware, verifiedMiddleware, adminMiddleware)
 	admin.RegisterRoutes(r, adminHandler, authMiddleware, adminMiddleware)
 	sensitive.RegisterAdminRoutes(r, sensitiveHandler, authMiddleware, adminMiddleware)
 
