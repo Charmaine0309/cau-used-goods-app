@@ -60,12 +60,16 @@ func main() {
 	sensitiveRepo := sensitive.NewRepository(db.DB())
 	sensitiveService := sensitive.NewService(sensitiveRepo)
 
+	messageRepo := message.NewRepository(db.DB())
+	messageService := message.NewService(messageRepo)
+	messageHandler := message.NewHandler(messageService)
+
 	productRepo := product.NewRepository(db.DB())
 	productService := product.NewService(productRepo, sensitiveService)
 	productHandler := product.NewHandler(productService)
 
 	orderRepo := order.NewRepository(db.DB())
-	orderService := order.NewService(orderRepo, productService)
+	orderService := order.NewService(orderRepo, productService, messageService)
 	orderHandler := order.NewHandler(orderService)
 
 	favoriteRepo := favorite.NewRepository(db.DB())
@@ -73,16 +77,12 @@ func main() {
 	favoriteHandler := favorite.NewHandler(favoriteService)
 
 	reviewRepo := review.NewRepository(db.DB())
-	reviewService := review.NewService(reviewRepo)
+	reviewService := review.NewService(reviewRepo, messageService)
 	reviewHandler := review.NewHandler(reviewService)
 
 	reportRepo := report.NewRepository(db.DB())
-	reportService := report.NewService(reportRepo, db.DB(), sensitiveService)
+	reportService := report.NewService(reportRepo, db.DB(), sensitiveService, messageService)
 	reportHandler := report.NewHandler(reportService)
-
-	messageRepo := message.NewRepository(db.DB())
-	messageService := message.NewService(messageRepo)
-	messageHandler := message.NewHandler(messageService)
 
 	chatRepo := chat.NewRepository(db.DB())
 	chatService := chat.NewService(chatRepo)

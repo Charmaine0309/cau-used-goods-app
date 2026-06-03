@@ -3,14 +3,17 @@ package review
 import (
 	"context"
 	"fmt"
+
+	"cau-used-goods-app/backend/internal/message"
 )
 
 type Service struct {
-	repo *Repository
+	repo    *Repository
+	message *message.Service
 }
 
-func NewService(repo *Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo *Repository, messageService *message.Service) *Service {
+	return &Service{repo: repo, message: messageService}
 }
 
 type CreateReviewInput struct {
@@ -62,6 +65,19 @@ func (s *Service) Create(ctx context.Context, input CreateReviewInput) (*Review,
 
 	if err := s.repo.Create(ctx, review); err != nil {
 		return nil, err
+	}
+
+	// 发送评价通知给卖家
+	if s.message != nil {
+		relatedType := message.RelatedTypeOrder
+		_, _ = s.message.Create(ctx, message.CreateMessageInput{
+			ReceiverID:  sellerID,
+			MessageType: message.MessageTypeSystemNotice,
+			Title:       "收到新评价",
+			Content:     fmt.Sprintf("您的订单收到%f星评价", input.Rating),
+			RelatedType: &relatedType,
+			RelatedID:   &input.OrderID,
+		})
 	}
 
 	return review, nil
