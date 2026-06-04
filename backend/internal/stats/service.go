@@ -37,3 +37,7 @@ func (s *Service) UserOverview(ctx context.Context) (*UserOverview, error) {
 func (s *Service) ReportOverview(ctx context.Context) (*ReportOverview, error) {
 	return s.repo.ReportOverview(ctx)
 }
+
+func (s *Service) AppealOverview(ctx context.Context) (*AppealOverview, error) {
+	return s.repo.AppealOverview(ctx)
+}

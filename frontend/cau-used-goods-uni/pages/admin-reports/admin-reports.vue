@@ -1,0 +1,728 @@
+<template>
+  <view class="page">
+    <view class="page-title">风险处理</view>
+
+    <view class="tab-row">
+      <view :class="['tab', activeMode === 'REPORT' ? 'active' : '']" @click="activeMode = 'REPORT'">
+        举报处理
+        <text>{{ pendingReports }}</text>
+      </view>
+      <view :class="['tab', activeMode === 'APPEAL' ? 'active' : '']" @click="activeMode = 'APPEAL'">
+        申诉处理
+        <text>{{ pendingAppeals }}</text>
+      </view>
+    </view>
+
+    <view class="summary">
+      <view>
+        <view :class="['summary-number', pendingCount ? 'danger' : '']">{{ pendingCount }}</view>
+        <view class="summary-label">{{ activeMode === 'REPORT' ? '待处理举报' : '待处理申诉' }}</view>
+      </view>
+      <view :class="['summary-status', pendingCount ? 'warning' : 'safe']">
+        {{ pendingCount ? '需要处理' : '暂无风险' }}
+      </view>
+    </view>
+
+    <view class="filter-row">
+      <view
+        v-for="item in currentFilters"
+        :key="item.value"
+        :class="['filter-chip', activeTarget === item.value ? 'active' : '']"
+        @click="activeTarget = item.value"
+      >
+        {{ item.label }} {{ countByTarget(item.value) }}
+      </view>
+    </view>
+
+    <view class="type-board">
+      <view
+        v-for="item in boardItems"
+        :key="item.value"
+        :class="['type-item', activeTarget === item.value ? 'active' : '']"
+        @click="selectTarget(item.value)"
+      >
+        <text>{{ item.label }}</text>
+        <text>{{ countByTarget(item.value) }}</text>
+      </view>
+    </view>
+
+    <view v-if="filteredItems.length === 0" class="empty">
+      {{ emptyText }}
+    </view>
+
+    <view v-for="item in filteredItems" :key="item.id" class="case-card" @click="toggleOpen(item.id)">
+      <view class="card-head">
+        <view class="card-main">
+          <view class="case-title">{{ itemTitle(item) }}</view>
+          <view class="case-sub">{{ targetText(item.targetType) }} #{{ item.targetId }}</view>
+        </view>
+        <view :class="['status-badge', item.status]">{{ statusText(item.status) }}</view>
+      </view>
+
+      <view class="case-desc">{{ itemDescription(item) }}</view>
+
+      <view class="meta-row">
+        <text>{{ activeMode === 'REPORT' ? '举报人' : '申诉人' }}：{{ actorName(item) }}</text>
+        <text>{{ shortTime(item.createTime) }}</text>
+      </view>
+
+      <view v-if="openedId === item.id" class="detail-panel" @click.stop>
+        <view v-if="targetProduct(item)" class="target-product" @click.stop="goProduct(targetProduct(item).id)">
+          <image
+            v-if="productCover(targetProduct(item))"
+            class="target-image"
+            :src="productCover(targetProduct(item))"
+            mode="aspectFill"
+          />
+          <view v-else class="target-image placeholder">商品</view>
+          <view class="target-main">
+            <view class="target-title">{{ targetProduct(item).title || '商品' }}</view>
+            <view class="target-meta">￥{{ targetProduct(item).price || 0 }} · {{ productStatusText(targetProduct(item).status) }}</view>
+          </view>
+          <text class="target-arrow">›</text>
+        </view>
+
+        <view class="detail-row">
+          <text>对象类型</text>
+          <text>{{ targetText(item.targetType) }}</text>
+        </view>
+        <view class="detail-row">
+          <text>对象 ID</text>
+          <text>#{{ item.targetId }}</text>
+        </view>
+        <view class="detail-row">
+          <text>当前状态</text>
+          <text>{{ statusText(item.status) }}</text>
+        </view>
+        <view class="detail-row">
+          <text>{{ activeMode === 'REPORT' ? '举报原因' : '申诉理由' }}</text>
+          <text>{{ itemTitle(item) }}</text>
+        </view>
+        <view v-if="item.handleTime" class="detail-row">
+          <text>处理时间</text>
+          <text>{{ shortTime(item.handleTime) }}</text>
+        </view>
+
+        <view v-if="item.images?.length" class="image-grid">
+          <image
+            v-for="url in item.images"
+            :key="url"
+            class="case-image"
+            :src="url"
+            mode="aspectFill"
+            @click.stop="previewImage(url, item.images)"
+          />
+        </view>
+
+        <view v-if="item.handleResult" class="handle-result">
+          {{ item.handleResult }}
+        </view>
+
+        <view v-if="canHandle(item.status)" class="actions">
+          <button
+            v-if="item.status === 'PENDING'"
+            size="mini"
+            class="process"
+            @click.stop="handleCurrent(item.id, 'PROCESSING')"
+          >
+            开始处理
+          </button>
+          <button
+            v-if="activeMode === 'REPORT'"
+            size="mini"
+            class="pass"
+            @click.stop="handleCurrent(item.id, 'RESOLVED')"
+          >
+            处理完成
+          </button>
+          <button
+            v-if="activeMode === 'REPORT'"
+            size="mini"
+            class="reject"
+            @click.stop="handleCurrent(item.id, 'REJECTED')"
+          >
+            驳回
+          </button>
+          <button
+            v-if="activeMode === 'APPEAL'"
+            size="mini"
+            class="pass"
+            @click.stop="handleCurrent(item.id, 'APPROVED')"
+          >
+            通过申诉
+          </button>
+          <button
+            v-if="activeMode === 'APPEAL'"
+            size="mini"
+            class="reject"
+            @click.stop="handleCurrent(item.id, 'REJECTED')"
+          >
+            驳回申诉
+          </button>
+          <button size="mini" class="close" @click.stop="handleCurrent(item.id, 'CLOSED')">关闭</button>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup>
+import { computed, ref, watch } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import {
+  getAdminAppeals,
+  getAdminReports,
+  handleAdminAppeal,
+  handleAdminReport
+} from '../../api/admin'
+import { getProductById } from '../../api/product'
+import { normalizeImage } from '../../utils/product-format'
+
+const activeMode = ref('REPORT')
+const activeTarget = ref('ALL')
+const openedId = ref(null)
+const reports = ref([])
+const appeals = ref([])
+const productMap = ref({})
+
+const reportFilters = [
+  { label: '全部', value: 'ALL' },
+  { label: '商品', value: 'PRODUCT' },
+  { label: '用户', value: 'USER' },
+  { label: '订单', value: 'ORDER' }
+]
+
+const appealFilters = [
+  ...reportFilters,
+  { label: '举报', value: 'REPORT' }
+]
+
+const currentItems = computed(() => activeMode.value === 'REPORT' ? reports.value : appeals.value)
+const currentFilters = computed(() => activeMode.value === 'REPORT' ? reportFilters : appealFilters)
+const boardItems = computed(() => currentFilters.value.filter((item) => item.value !== 'ALL'))
+
+const pendingReports = computed(() => reports.value.filter((item) => ['PENDING', 'PROCESSING'].includes(item.status)).length)
+const pendingAppeals = computed(() => appeals.value.filter((item) => ['PENDING', 'PROCESSING'].includes(item.status)).length)
+const pendingCount = computed(() => activeMode.value === 'REPORT' ? pendingReports.value : pendingAppeals.value)
+
+const filteredItems = computed(() => {
+  if (activeTarget.value === 'ALL') return currentItems.value
+  return currentItems.value.filter((item) => item.targetType === activeTarget.value)
+})
+
+const emptyText = computed(() => {
+  const type = activeTarget.value === 'ALL' ? '全部' : targetText(activeTarget.value)
+  const noun = activeMode.value === 'REPORT' ? '举报' : '申诉'
+  return `当前没有${type}${noun}记录`
+})
+
+watch(activeMode, () => {
+  activeTarget.value = 'ALL'
+  openedId.value = null
+})
+
+const load = async () => {
+  try {
+    const [reportResult, appealResult] = await Promise.all([
+      getAdminReports(),
+      getAdminAppeals()
+    ])
+    reports.value = reportResult?.items || []
+    appeals.value = appealResult?.items || []
+    loadTargetProducts([...reports.value, ...appeals.value])
+  } catch (error) {
+    uni.showToast({ title: error.message || '加载失败', icon: 'none' })
+  }
+}
+
+onShow(load)
+
+const countByTarget = (targetType) => {
+  if (targetType === 'ALL') return currentItems.value.length
+  return currentItems.value.filter((item) => item.targetType === targetType).length
+}
+
+const selectTarget = (targetType) => {
+  activeTarget.value = targetType
+  openedId.value = null
+}
+
+const toggleOpen = (id) => {
+  openedId.value = openedId.value === id ? null : id
+}
+
+const loadTargetProducts = async (items) => {
+  const productIds = [...new Set((items || [])
+    .filter((item) => item.targetType === 'PRODUCT' && item.targetId)
+    .map((item) => item.targetId))]
+    .filter((id) => !productMap.value[id])
+
+  if (!productIds.length) return
+
+  const entries = await Promise.all(productIds.map(async (id) => {
+    try {
+      const product = await getProductById(id)
+      return [id, product]
+    } catch (error) {
+      return [id, null]
+    }
+  }))
+
+  const next = { ...productMap.value }
+  entries.forEach(([id, product]) => {
+    if (product) next[id] = product
+  })
+  productMap.value = next
+}
+
+const targetText = (targetType) => {
+  const map = {
+    PRODUCT: '商品',
+    USER: '用户',
+    ORDER: '订单',
+    REPORT: '举报'
+  }
+  return map[targetType] || targetType || '对象'
+}
+
+const reasonText = (reasonType) => {
+  const map = {
+    FAKE: '虚假信息',
+    FRAUD: '疑似诈骗',
+    PROHIBITED: '违规商品',
+    INAPPROPRIATE: '不当内容',
+    HARASSMENT: '骚扰行为',
+    OTHER: '其他原因'
+  }
+  return map[reasonType] || reasonType || '举报'
+}
+
+const statusText = (status) => {
+  const map = {
+    PENDING: '待处理',
+    PROCESSING: '处理中',
+    RESOLVED: '已处理',
+    APPROVED: '已通过',
+    REJECTED: '已驳回',
+    CLOSED: '已关闭'
+  }
+  return map[status] || status || '未知'
+}
+
+const itemTitle = (item) => {
+  if (activeMode.value === 'REPORT') return reasonText(item.reasonType)
+  return item.reason || '申诉'
+}
+
+const itemDescription = (item) => {
+  return item.description || item.reason || '暂无补充说明'
+}
+
+const targetProduct = (item) => {
+  if (item?.targetType !== 'PRODUCT') return null
+  return productMap.value[item.targetId] || null
+}
+
+const productCover = (product) => {
+  return normalizeImage(product?.images?.[0] || '')
+}
+
+const productStatusText = (status) => {
+  const map = { ON_SALE: '在售', OFF_SHELF: '已下架', LOCKED: '交易锁定', SOLD: '已售出', DELETED: '已删除' }
+  return map[status] || status || '未知'
+}
+
+const goProduct = (id) => {
+  if (!id) return
+  uni.navigateTo({ url: `/pages/admin-product-status/admin-product-status?id=${id}` })
+}
+
+const actorName = (item) => {
+  if (activeMode.value === 'REPORT') return item.reporterNickname || `用户${item.reporterId}`
+  return item.appellantNickname || `用户${item.appellantId}`
+}
+
+const shortTime = (value) => {
+  if (!value) return ''
+  return String(value).replace('T', ' ').slice(0, 16)
+}
+
+const canHandle = (status) => {
+  return ['PENDING', 'PROCESSING'].includes(status)
+}
+
+const previewImage = (current, urls) => {
+  uni.previewImage({ current, urls })
+}
+
+const handleCurrent = async (id, status) => {
+  const action = statusText(status)
+  uni.showModal({
+    title: '确认处理',
+    content: `确定将该${activeMode.value === 'REPORT' ? '举报' : '申诉'}标记为${action}吗？`,
+    success: async (res) => {
+      if (!res.confirm) return
+      try {
+        if (activeMode.value === 'REPORT') {
+          await handleAdminReport(id, status, `举报${action}`)
+        } else {
+          await handleAdminAppeal(id, status, `申诉${action}`)
+        }
+        uni.showToast({ title: '处理成功', icon: 'success' })
+        openedId.value = null
+        load()
+      } catch (error) {
+        uni.showToast({ title: error.message || '处理失败', icon: 'none' })
+      }
+    }
+  })
+}
+</script>
+
+<style scoped>
+.page {
+  min-height: 100vh;
+  padding: 28rpx 24rpx;
+  background: #f5f6f8;
+  box-sizing: border-box;
+}
+
+.page-title {
+  margin: 18rpx 0 24rpx;
+  font-size: 38rpx;
+  font-weight: 700;
+  color: #1f2933;
+}
+
+.tab-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
+  margin-bottom: 22rpx;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  min-height: 82rpx;
+  border-radius: 14rpx;
+  background: #fff;
+  color: #667085;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.tab.active {
+  background: #17a84b;
+  color: #fff;
+}
+
+.tab text {
+  min-width: 34rpx;
+  height: 34rpx;
+  padding: 0 10rpx;
+  border-radius: 999rpx;
+  background: rgba(0, 0, 0, 0.08);
+  font-size: 22rpx;
+  line-height: 34rpx;
+  text-align: center;
+}
+
+.summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 30rpx;
+  border-radius: 18rpx;
+  background: #fff;
+}
+
+.summary-number {
+  font-size: 54rpx;
+  line-height: 60rpx;
+  font-weight: 700;
+  color: #17a84b;
+}
+
+.summary-number.danger {
+  color: #ef4444;
+}
+
+.summary-label {
+  margin-top: 10rpx;
+  font-size: 26rpx;
+  color: #667085;
+}
+
+.summary-status {
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+}
+
+.summary-status.warning {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.summary-status.safe {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.filter-row {
+  display: flex;
+  gap: 14rpx;
+  margin: 24rpx 0;
+  overflow-x: auto;
+}
+
+.filter-chip {
+  flex-shrink: 0;
+  padding: 14rpx 22rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  color: #667085;
+  font-size: 26rpx;
+}
+
+.filter-chip.active {
+  background: #17a84b;
+  color: #fff;
+  font-weight: 700;
+}
+
+.type-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-bottom: 24rpx;
+}
+
+.type-item {
+  padding: 22rpx 16rpx;
+  border-radius: 14rpx;
+  background: #fff;
+  text-align: center;
+  font-size: 24rpx;
+  color: #667085;
+  border: 2rpx solid transparent;
+}
+
+.type-item text:last-child {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1f2933;
+}
+
+.type-item.active {
+  border-color: #17a84b;
+  background: #f0fdf4;
+}
+
+.type-item.active text:first-child,
+.type-item.active text:last-child {
+  color: #16a34a;
+}
+
+.case-card,
+.empty {
+  padding: 28rpx;
+  border-radius: 16rpx;
+  background: #fff;
+  margin-bottom: 18rpx;
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.case-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1f2933;
+}
+
+.case-sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #8a96a8;
+}
+
+.status-badge {
+  flex-shrink: 0;
+  padding: 8rpx 14rpx;
+  border-radius: 999rpx;
+  background: #eef2f6;
+  color: #667085;
+  font-size: 22rpx;
+}
+
+.status-badge.PENDING,
+.status-badge.PROCESSING {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.status-badge.RESOLVED,
+.status-badge.APPROVED {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.case-desc,
+.empty {
+  margin-top: 18rpx;
+  color: #667085;
+  font-size: 26rpx;
+  line-height: 38rpx;
+}
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 20rpx;
+  margin-top: 20rpx;
+  font-size: 22rpx;
+  color: #98a2b3;
+}
+
+.detail-panel {
+  margin-top: 22rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid #eef0f3;
+}
+
+.target-product {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  padding: 18rpx;
+  margin-bottom: 18rpx;
+  border-radius: 14rpx;
+  background: #f8fafc;
+}
+
+.target-image {
+  width: 116rpx;
+  height: 116rpx;
+  border-radius: 12rpx;
+  background: #eef2f6;
+  flex-shrink: 0;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #98a2b3;
+  font-size: 22rpx;
+}
+
+.target-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.target-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #1f2933;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.target-meta {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #667085;
+}
+
+.target-arrow {
+  color: #b2bdca;
+  font-size: 40rpx;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 12rpx 0;
+  font-size: 24rpx;
+  color: #667085;
+}
+
+.detail-row text:last-child {
+  flex: 1;
+  color: #1f2933;
+  text-align: right;
+  word-break: break-all;
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.case-image {
+  width: 100%;
+  height: 150rpx;
+  border-radius: 12rpx;
+  background: #eef2f6;
+}
+
+.actions {
+  margin-top: 22rpx;
+  display: flex;
+  gap: 14rpx;
+  flex-wrap: wrap;
+}
+
+.actions button {
+  margin: 0;
+}
+
+.pass {
+  background: #17a84b;
+  color: #fff;
+}
+
+.process {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.reject {
+  background: #fff1f2;
+  color: #ef4444;
+}
+
+.close {
+  background: #f8fafc;
+  color: #667085;
+}
+
+.handle-result {
+  margin-top: 18rpx;
+  padding: 16rpx;
+  border-radius: 12rpx;
+  background: #f8fafc;
+  color: #667085;
+  font-size: 24rpx;
+}
+</style>

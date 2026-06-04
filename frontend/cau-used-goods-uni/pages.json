@@ -67,15 +67,78 @@
       }
     },
     {
-      "path": "pages/my-products/my-products",
-      "style": {
-        "navigationBarTitleText": "我发布的"
-      }
-    },
-    {
-      "path": "pages/my-orders/my-orders",
-      "style": {
-        "navigationBarTitleText": "我的交易"
+{
+  "path": "pages/my-products/my-products",
+  "style": {
+    "navigationBarTitleText": "我发布的"
+  }
+},
+{
+  "path": "pages/my-orders/my-orders",
+  "style": {
+    "navigationBarTitleText": "我的交易"
+  }
+},
+{
+  "path": "pages/admin-students/admin-students",
+  "style": {
+    "navigationBarTitleText": "学生认证审核"
+  }
+},
+{
+  "path": "pages/admin-products/admin-products",
+  "style": {
+    "navigationBarTitleText": "商品管理"
+  }
+},
+{
+  "path": "pages/admin-product-status/admin-product-status",
+  "style": {
+    "navigationBarTitleText": "商品状态"
+  }
+},
+{
+  "path": "pages/admin-reports/admin-reports",
+  "style": {
+    "navigationBarTitleText": "举报处理"
+  }
+},
+{
+  "path": "pages/admin-logs/admin-logs",
+  "style": {
+    "navigationBarTitleText": "管理员日志"
+  }
+},
+{
+  "path": "pages/admin-users/admin-users",
+  "style": {
+    "navigationBarTitleText": "用户管理"
+  }
+},
+{
+  "path": "pages/admin-sensitive/admin-sensitive",
+  "style": {
+    "navigationBarTitleText": "敏感词管理"
+  }
+},
+{
+  "path": "pages/admin-categories/admin-categories",
+  "style": {
+    "navigationBarTitleText": "标签管理"
+  }
+},
+{
+  "path": "pages/admin-announcements/admin-announcements",
+  "style": {
+    "navigationBarTitleText": "公告管理"
+  }
+},
+{
+  "path": "pages/admin-stats/admin-stats",
+  "style": {
+    "navigationBarTitleText": "数据统计"
+  }
+}
       }
     }
   ],

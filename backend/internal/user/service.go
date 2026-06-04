@@ -182,6 +182,10 @@ func (s *Service) ListStudentVerifications(ctx context.Context, status string) (
 	return s.repo.ListStudentVerifications(ctx, status)
 }
 
+func (s *Service) ListUsers(ctx context.Context) ([]AdminUserItem, error) {
+	return s.repo.ListUsers(ctx)
+}
+
 func (s *Service) ReviewStudentVerification(ctx context.Context, adminID uint64, input ReviewStudentVerificationInput) (*StudentVerification, error) {
 	if input.UserID == 0 {
 		return nil, fmt.Errorf("userId is required")

@@ -23,7 +23,7 @@
 | 修改资料 | `pages/profile-edit/profile-edit` | 修改昵称、手机号，上传头像，可选择沿用微信昵称和头像 |
 | 学生认证 | `pages/student-auth/student-auth` | 填写姓名、学号、学院并提交审核 |
 | 地址管理 | `pages/address/address` | 新增、删除、设置默认交易地址 |
-| 后台管理 | `pages/admin/admin` | 查看数据看板、待审核学生认证、管理员日志 |
+| 后台管理 | `pages/admin/admin` | 数据看板作为操作入口，可进入学生认证审核、商品上下架、举报处理和管理员日志 |
 
 ## 跳转逻辑
 
@@ -31,7 +31,7 @@
 2. 登录成功后进入首页，首页右上角可进入个人中心。
 3. 个人中心中可进入学生认证、资料修改、地址管理。
 4. 当后端返回用户 `role=ADMIN` 时，个人中心显示“后台管理”入口；登录页不单独暴露管理员入口。
-5. 管理员进入后台管理后，可以查看统计数据和待审核学生认证。
+5. 管理员进入后台管理后，点击看板卡片进入对应操作区：待认证审核、商品上下架、举报处理、管理员日志。
 
 ## 接口对接
 
@@ -48,6 +48,11 @@
 | 用户统计 | `GET /stats/users/overview` |
 | 商品统计 | `GET /stats/products/overview` |
 | 订单统计 | `GET /stats/orders/overview` |
+| 举报统计 | `GET /stats/reports/overview` |
+| 商品列表 | `GET /products?status=ALL` |
+| 商品上下架 | `PUT /products/:id/status` |
+| 举报列表 | `GET /admin/reports` |
+| 举报处理 | `POST /admin/reports/:id/handle` |
 | 管理员日志 | `GET /admin/logs` |
 
 ## 说明

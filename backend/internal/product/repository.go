@@ -62,6 +62,91 @@ func (r *Repository) ListCategories(ctx context.Context) ([]Category, error) {
 	return list, rows.Err()
 }
 
+func (r *Repository) ListAllCategories(ctx context.Context, status string) ([]Category, error) {
+	query := `
+		SELECT id, name, parent_id, sort_order, status
+		FROM categories
+		WHERE 1 = 1
+	`
+	args := []interface{}{}
+	if status != "" {
+		query += " AND status = ?"
+		args = append(args, status)
+	}
+	query += " ORDER BY sort_order ASC, id ASC"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []Category
+	for rows.Next() {
+		var c Category
+		if err := rows.Scan(&c.ID, &c.Name, &c.ParentID, &c.SortOrder, &c.Status); err != nil {
+			return nil, err
+		}
+		list = append(list, c)
+	}
+	return list, rows.Err()
+}
+
+type CreateCategoryInput struct {
+	Name      string
+	ParentID  uint64
+	SortOrder int
+	Status    string
+}
+
+func (r *Repository) CreateCategory(ctx context.Context, input CreateCategoryInput) (uint64, error) {
+	result, err := r.db.ExecContext(ctx, `
+		INSERT INTO categories (name, parent_id, sort_order, status)
+		VALUES (?, ?, ?, ?)
+	`, input.Name, input.ParentID, input.SortOrder, input.Status)
+	if err != nil {
+		return 0, err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	return uint64(id), nil
+}
+
+type UpdateCategoryInput struct {
+	ID        uint64
+	Name      string
+	ParentID  uint64
+	SortOrder int
+	Status    string
+}
+
+func (r *Repository) UpdateCategory(ctx context.Context, input UpdateCategoryInput) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE categories
+		SET name = ?, parent_id = ?, sort_order = ?, status = ?, update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, input.Name, input.ParentID, input.SortOrder, input.Status, input.ID)
+	if err != nil {
+		return err
+	}
+	return checkAffected(result)
+}
+
+func (r *Repository) UpdateCategoryStatus(ctx context.Context, id uint64, status string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE categories
+		SET status = ?, update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, status, id)
+	if err != nil {
+		return err
+	}
+	return checkAffected(result)
+}
+
 type CreateProductInput struct {
 	SellerID       uint64
 	CategoryID     uint64
@@ -102,14 +187,15 @@ func (r *Repository) CreateProduct(ctx context.Context, input CreateProductInput
 }
 
 type ListProductsInput struct {
-	Keyword    string
-	CategoryID uint64
-	Status     string
-	MinPrice   *float64
-	MaxPrice   *float64
-	Sort       string
-	Page       int
-	PageSize   int
+	Keyword        string
+	CategoryID     uint64
+	ConditionLevel string
+	Status         string
+	MinPrice       *float64
+	MaxPrice       *float64
+	Sort           string
+	Page           int
+	PageSize       int
 }
 
 type ProductListResult struct {
@@ -150,6 +236,11 @@ func (r *Repository) ListProducts(ctx context.Context, input ListProductsInput) 
 	if input.CategoryID > 0 {
 		where += " AND category_id = ? "
 		args = append(args, input.CategoryID)
+	}
+
+	if input.ConditionLevel != "" {
+		where += " AND condition_level = ? "
+		args = append(args, input.ConditionLevel)
 	}
 
 	if input.MinPrice != nil {
@@ -194,7 +285,7 @@ func (r *Repository) ListProducts(ctx context.Context, input ListProductsInput) 
 	}
 	defer rows.Close()
 
-	var list []Product
+	list := make([]Product, 0)
 	for rows.Next() {
 		var p Product
 		var desc sql.NullString
@@ -275,7 +366,7 @@ func (r *Repository) ListProductImages(ctx context.Context, productID uint64) ([
 	}
 	defer rows.Close()
 
-	var images []string
+	images := make([]string, 0)
 	for rows.Next() {
 		var url string
 		if err := rows.Scan(&url); err != nil {
@@ -301,7 +392,7 @@ func (r *Repository) ListMyProducts(ctx context.Context, sellerID uint64) ([]Pro
 	}
 	defer rows.Close()
 
-	var list []Product
+	list := make([]Product, 0)
 	for rows.Next() {
 		var p Product
 		var desc sql.NullString
@@ -413,6 +504,64 @@ func (r *Repository) UpdateProductStatus(ctx context.Context, productID uint64, 
 	}
 
 	return checkAffected(result)
+}
+
+func (r *Repository) UpdateProductStatusByAdmin(ctx context.Context, productID uint64, adminID uint64, status string, reason string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE products
+		SET status = ?,
+		    off_shelf_reason = ?,
+		    update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+		  AND is_deleted = 0
+		  AND (
+		      (? = 'OFF_SHELF' AND status = 'ON_SALE')
+		      OR
+		      (? = 'ON_SALE' AND status = 'OFF_SHELF')
+		  )
+	`,
+		status, reason, productID, status, status,
+	)
+	if err != nil {
+		return err
+	}
+	if err := checkAffected(result); err != nil {
+		return err
+	}
+
+	operationType := "PRODUCT_ON_SALE"
+	if status == "OFF_SHELF" {
+		operationType = "PRODUCT_OFF_SHELF"
+	}
+	description := reason
+	if description == "" {
+		description = "admin update product status"
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, create_time)
+		VALUES (?, ?, 'PRODUCT', ?, ?, NOW())
+	`, adminID, operationType, productID, description); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 type AddProductImagesInput struct {
