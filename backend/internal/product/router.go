@@ -17,6 +17,12 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, adminMiddle
 		adminCategories.DELETE("/:id", handler.AdminDeleteCategory)
 	}
 
+	adminProducts := r.Group("/admin/products")
+	adminProducts.Use(authMiddleware, adminMiddleware)
+	{
+		adminProducts.PUT("/:id/status", handler.AdminUpdateProductStatus)
+	}
+
 	products := r.Group("/products")
 	products.Use(authMiddleware)
 	{

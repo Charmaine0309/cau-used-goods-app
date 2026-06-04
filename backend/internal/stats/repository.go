@@ -70,7 +70,7 @@ type ReportOverview struct {
 	TotalReports      int `json:"totalReports"`
 	PendingReports    int `json:"pendingReports"`
 	ProcessingReports int `json:"processingReports"`
-	ResolvedReports   int `json:"resolvedReports"`
+	ApprovedReports   int `json:"approvedReports"`
 	RejectedReports   int `json:"rejectedReports"`
 	ClosedReports     int `json:"closedReports"`
 	ProductReports    int `json:"productReports"`
@@ -187,7 +187,7 @@ func (r *Repository) ReportOverview(ctx context.Context) (*ReportOverview, error
 			COUNT(*) AS total_reports,
 			COALESCE(SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END), 0) AS pending_reports,
 			COALESCE(SUM(CASE WHEN status = 'PROCESSING' THEN 1 ELSE 0 END), 0) AS processing_reports,
-			COALESCE(SUM(CASE WHEN status = 'RESOLVED' THEN 1 ELSE 0 END), 0) AS resolved_reports,
+			COALESCE(SUM(CASE WHEN status = 'APPROVED' THEN 1 ELSE 0 END), 0) AS approved_reports,
 			COALESCE(SUM(CASE WHEN status = 'REJECTED' THEN 1 ELSE 0 END), 0) AS rejected_reports,
 			COALESCE(SUM(CASE WHEN status = 'CLOSED' THEN 1 ELSE 0 END), 0) AS closed_reports,
 			COALESCE(SUM(CASE WHEN target_type = 'PRODUCT' THEN 1 ELSE 0 END), 0) AS product_reports,
@@ -198,7 +198,7 @@ func (r *Repository) ReportOverview(ctx context.Context) (*ReportOverview, error
 		&overview.TotalReports,
 		&overview.PendingReports,
 		&overview.ProcessingReports,
-		&overview.ResolvedReports,
+		&overview.ApprovedReports,
 		&overview.RejectedReports,
 		&overview.ClosedReports,
 		&overview.ProductReports,

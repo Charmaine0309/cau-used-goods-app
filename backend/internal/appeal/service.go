@@ -131,6 +131,67 @@ func (s *Service) Handle(ctx context.Context, input HandleAppealInput) (*Appeal,
 	return item, nil
 }
 
+func (s *Service) Close(ctx context.Context, input CloseAppealInput) (*Appeal, error) {
+	input.CloseReason = strings.TrimSpace(input.CloseReason)
+	if input.AppealID == 0 {
+		return nil, fmt.Errorf("appealId is required")
+	}
+	if input.AppellantID == 0 {
+		return nil, fmt.Errorf("appellantId is required")
+	}
+	if len([]rune(input.CloseReason)) > 500 {
+		return nil, fmt.Errorf("closeReason cannot exceed 500 characters")
+	}
+
+	item, err := s.repo.GetDetailByID(ctx, input.AppealID)
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, fmt.Errorf("appeal not found")
+	}
+	if item.AppellantID != input.AppellantID {
+		return nil, fmt.Errorf("permission denied")
+	}
+	if item.Status != StatusPending {
+		return nil, fmt.Errorf("appeal cannot be closed")
+	}
+
+	return s.repo.Close(ctx, input)
+}
+
+func (s *Service) MarkProcessing(ctx context.Context, appealID, adminID uint64, ipAddress *string) (*Appeal, error) {
+	if appealID == 0 {
+		return nil, fmt.Errorf("appealId is required")
+	}
+	if adminID == 0 {
+		return nil, fmt.Errorf("adminId is required")
+	}
+	if ipAddress != nil {
+		trimmed := strings.TrimSpace(*ipAddress)
+		ipAddress = &trimmed
+	}
+
+	item, err := s.repo.MarkProcessing(ctx, appealID, adminID)
+	if err != nil {
+		return nil, err
+	}
+
+	description := fmt.Sprintf("mark appeal #%d as PROCESSING", item.ID)
+	if _, err := s.admin.LogAction(ctx, admin.LogActionInput{
+		AdminID:       adminID,
+		OperationType: admin.OperationHandleAppeal,
+		TargetType:    admin.TargetTypeAppeal,
+		TargetID:      item.ID,
+		Description:   &description,
+		IPAddress:     ipAddress,
+	}); err != nil {
+		return nil, err
+	}
+
+	return item, nil
+}
+
 func validateCreateInput(input CreateAppealInput) error {
 	if input.AppellantID == 0 {
 		return fmt.Errorf("appellantId is required")
@@ -160,8 +221,8 @@ func validateHandleInput(input HandleAppealInput) error {
 	if input.AdminID == 0 {
 		return fmt.Errorf("adminId is required")
 	}
-	if input.Status != StatusApproved && input.Status != StatusRejected && input.Status != StatusClosed {
-		return fmt.Errorf("status must be APPROVED, REJECTED or CLOSED")
+	if input.Status != StatusApproved && input.Status != StatusRejected {
+		return fmt.Errorf("status must be APPROVED or REJECTED")
 	}
 	if input.HandleResult == "" {
 		return fmt.Errorf("handleResult is required")

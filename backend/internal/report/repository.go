@@ -160,6 +160,44 @@ func (r *Repository) UpdateStatus(ctx context.Context, reportID uint64, status s
 	return nil
 }
 
+func (r *Repository) Close(ctx context.Context, reportID uint64, reporterID uint64, closeReason *string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE reports
+		SET status = 'CLOSED', handle_result = ?, handler_id = NULL, handle_time = NOW(), update_time = CURRENT_TIMESTAMP
+		WHERE id = ? AND reporter_id = ? AND status = 'PENDING'
+	`, closeReason, reportID, reporterID)
+	if err != nil {
+		return fmt.Errorf("close report: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check close report result: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("report cannot be closed")
+	}
+	return nil
+}
+
+func (r *Repository) MarkProcessing(ctx context.Context, reportID uint64, handlerID uint64) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE reports
+		SET status = 'PROCESSING', handler_id = ?
+		WHERE id = ? AND status = 'PENDING'
+	`, handlerID, reportID)
+	if err != nil {
+		return fmt.Errorf("mark report processing: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check mark report processing result: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("report cannot be marked processing")
+	}
+	return nil
+}
+
 func (r *Repository) HasReported(ctx context.Context, reporterID uint64, targetType string, targetID uint64) (bool, error) {
 	query := `SELECT COUNT(*) FROM reports WHERE reporter_id = ? AND target_type = ? AND target_id = ? AND status IN ('PENDING', 'PROCESSING')`
 	var count int
@@ -169,7 +207,9 @@ func (r *Repository) HasReported(ctx context.Context, reporterID uint64, targetT
 	return count > 0, nil
 }
 
-func scanReportDetail(row interface{ Scan(dest ...interface{}) error }) (*ReportDetail, error) {
+func scanReportDetail(row interface {
+	Scan(dest ...interface{}) error
+}) (*ReportDetail, error) {
 	var rd ReportDetail
 	var desc, handleResult sql.NullString
 	var handlerID sql.NullInt64

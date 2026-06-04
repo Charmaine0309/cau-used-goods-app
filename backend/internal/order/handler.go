@@ -29,6 +29,11 @@ type cancelOrderRequest struct {
 	Reason string `json:"reason" binding:"required"`
 }
 
+type adminUpdateOrderStatusRequest struct {
+	Status string `json:"status" binding:"required"`
+	Reason string `json:"reason"`
+}
+
 func (h *Handler) Create(c *gin.Context) {
 	userID, ok := middleware.CurrentUserID(c)
 	if !ok {
@@ -236,4 +241,38 @@ func (h *Handler) CancelExpired(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"cancelledCount": count})
+}
+
+func (h *Handler) AdminUpdateStatus(c *gin.Context) {
+	adminID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	orderID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || orderID == 0 {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid order id")
+		return
+	}
+
+	var req adminUpdateOrderStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+
+	ipAddress := c.ClientIP()
+	order, err := h.service.AdminUpdateStatus(c.Request.Context(), AdminUpdateOrderStatusInput{
+		AdminID:   adminID,
+		OrderID:   orderID,
+		Status:    req.Status,
+		Reason:    req.Reason,
+		IPAddress: &ipAddress,
+	})
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		return
+	}
+	response.Success(c, order)
 }

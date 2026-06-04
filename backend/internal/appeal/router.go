@@ -9,6 +9,7 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMid
 		group.POST("", handler.Create)
 		group.GET("/my", handler.ListMy)
 		group.GET("/:id", handler.GetByID)
+		group.POST("/:id/close", handler.Close)
 	}
 
 	adminGroup := r.Group("/admin/appeals")
@@ -16,6 +17,7 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMid
 	{
 		adminGroup.GET("", handler.AdminList)
 		adminGroup.GET("/:id", handler.AdminGetByID)
+		adminGroup.POST("/:id/processing", handler.AdminMarkProcessing)
 		adminGroup.POST("/:id/handle", handler.AdminHandle)
 	}
 }

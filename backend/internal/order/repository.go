@@ -148,6 +148,51 @@ func (r *Repository) MarkProductSold(ctx context.Context, tx *sql.Tx, productID 
 	return nil
 }
 
+func (r *Repository) UpdateProductStatusForAdmin(ctx context.Context, tx *sql.Tx, productID uint64, status string) error {
+	query := `
+		UPDATE products
+		SET status = ?,
+		    is_deleted = CASE WHEN ? = 'DELETED' THEN 1 ELSE 0 END,
+		    update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`
+	var result sql.Result
+	var err error
+	if tx != nil {
+		result, err = tx.ExecContext(ctx, query, status, status, productID)
+	} else {
+		result, err = r.db.ExecContext(ctx, query, status, status, productID)
+	}
+	if err != nil {
+		return fmt.Errorf("update product status for admin: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("product not found")
+	}
+	return nil
+}
+
+func (r *Repository) CreateAdminLog(ctx context.Context, tx *sql.Tx, adminID uint64, operationType string, targetType string, targetID uint64, description string, ipAddress *string) error {
+	query := `
+		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, ip_address, create_time)
+		VALUES (?, ?, ?, ?, ?, ?, NOW())
+	`
+	var err error
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, query, adminID, operationType, targetType, targetID, description, ipAddress)
+	} else {
+		_, err = r.db.ExecContext(ctx, query, adminID, operationType, targetType, targetID, description, ipAddress)
+	}
+	if err != nil {
+		return fmt.Errorf("create admin log: %w", err)
+	}
+	return nil
+}
+
 func (r *Repository) ListByBuyer(ctx context.Context, buyerID uint64, status string, page, pageSize int) ([]OrderDetail, int, error) {
 	where := "o.buyer_id = ?"
 	args := []interface{}{buyerID}

@@ -360,6 +360,11 @@ type updateProductStatusRequest struct {
 	Reason string `json:"reason"`
 }
 
+type adminUpdateProductStatusRequest struct {
+	Status string `json:"status" binding:"required"`
+	Reason string `json:"reason"`
+}
+
 func (h *Handler) UpdateProductStatus(c *gin.Context) {
 	productID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || productID == 0 {
@@ -386,6 +391,43 @@ func (h *Handler) UpdateProductStatus(c *gin.Context) {
 
 	if err := h.service.UpdateProductStatus(c.Request.Context(), productID, userID, req.Status, req.Reason); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "product not found or status cannot be changed")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"id":     productID,
+		"status": req.Status,
+	})
+}
+
+func (h *Handler) AdminUpdateProductStatus(c *gin.Context) {
+	adminID, ok := currentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	productID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || productID == 0 {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid product id")
+		return
+	}
+
+	var req adminUpdateProductStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+
+	ipAddress := c.ClientIP()
+	if err := h.service.AdminUpdateProductStatus(c.Request.Context(), AdminUpdateProductStatusInput{
+		AdminID:   adminID,
+		ProductID: productID,
+		Status:    req.Status,
+		Reason:    req.Reason,
+		IPAddress: &ipAddress,
+	}); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
 
