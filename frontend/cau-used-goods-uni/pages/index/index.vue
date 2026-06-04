@@ -11,6 +11,10 @@
     </view>
 
     <view class="menu-card">
+      <view class="menu-item" @click="goMyProducts">我发布的</view>
+      <view class="menu-item" @click="goSoldOrders">我卖出的</view>
+      <view class="menu-item" @click="goBoughtOrders">我买到的</view>
+      <view class="menu-item" @click="goPublish">发布闲置商品</view>
       <view class="menu-item" @click="goStudentAuth">学生认证</view>
       <view class="menu-item" @click="goAddress">地址管理</view>
       <view v-if="isAdmin" class="menu-item" @click="goAdmin">后台管理</view>
@@ -59,6 +63,10 @@ onShow(async () => {
 })
 
 const goProfileEdit = () => uni.navigateTo({ url: '/pages/profile-edit/profile-edit' })
+const goMyProducts = () => uni.navigateTo({ url: '/pages/my-products/my-products' })
+const goSoldOrders = () => uni.navigateTo({ url: '/pages/my-orders/my-orders?role=seller' })
+const goBoughtOrders = () => uni.navigateTo({ url: '/pages/my-orders/my-orders?role=buyer' })
+const goPublish = () => uni.switchTab({ url: '/pages/publish/publish' })
 const goStudentAuth = () => uni.navigateTo({ url: '/pages/student-auth/student-auth' })
 const goAddress = () => uni.navigateTo({ url: '/pages/address/address' })
 const goAdmin = () => uni.navigateTo({ url: '/pages/admin/admin' })
