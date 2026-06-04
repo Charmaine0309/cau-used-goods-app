@@ -44,12 +44,12 @@ const chooseImages = async () => {
 const optimizeTitle = async () => {
   if (!form.title) return toast('请先填写一个基础标题')
   try { uni.showLoading({ title: 'AI 正在优化' }); const { titles } = await optimizeProductTitle({ title: form.title, categoryName: categoryName.value, conditionLevel: form.conditionLevel }); uni.showActionSheet({ itemList: titles, success: ({ tapIndex }) => { form.title = titles[tapIndex] } }) }
-  catch (error) { toast(error.message || 'AI 服务暂时不可用，你仍可手动填写') } finally { uni.hideLoading() }
+  catch (error) { toast('AI 服务暂时不可用，你仍可手动填写') } finally { uni.hideLoading() }
 }
 const generateDescription = async () => {
   if (!form.title) return toast('请先填写标题')
   try { uni.showLoading({ title: 'AI 正在生成' }); const result = await generateProductDescription({ title: form.title, categoryName: categoryName.value, conditionLevel: form.conditionLevel, meetLocation: form.meetLocation }); form.description = result.description }
-  catch (error) { toast(error.message || 'AI 服务暂时不可用，你仍可手动填写') } finally { uni.hideLoading() }
+  catch (error) { toast('AI 服务暂时不可用，你仍可手动填写') } finally { uni.hideLoading() }
 }
 const validate = () => {
   if (!form.images.length) return '请至少上传一张商品图片'

@@ -36,7 +36,8 @@ const loadProducts = async (reset = false) => {
   try {
     const nextPage = reset ? 1 : page.value
     const result = await listProducts({ categoryId: categoryId.value, sort: sort.value, page: nextPage, pageSize: 8 })
-    rawProducts.value = reset ? result.list : rawProducts.value.concat(result.list)
+    const list = result.list || []
+    rawProducts.value = reset ? list : rawProducts.value.concat(list)
     total.value = result.total
     page.value = nextPage + 1
   } catch (error) { uni.showToast({ title: error.message, icon: 'none' }) } finally { loading.value = false }

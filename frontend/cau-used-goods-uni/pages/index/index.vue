@@ -9,7 +9,6 @@
       </view>
       <button class="edit-button" size="mini" @click="goProfileEdit">修改资料</button>
     </view>
-
     <view class="menu-card">
       <view class="menu-item" @click="goMyProducts">我发布的</view>
       <view class="menu-item" @click="goSoldOrders">我卖出的</view>

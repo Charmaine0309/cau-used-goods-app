@@ -65,6 +65,18 @@
       "style": {
         "navigationBarTitleText": "后台管理"
       }
+    },
+    {
+      "path": "pages/my-products/my-products",
+      "style": {
+        "navigationBarTitleText": "我发布的"
+      }
+    },
+    {
+      "path": "pages/my-orders/my-orders",
+      "style": {
+        "navigationBarTitleText": "我的交易"
+      }
     }
   ],
   "tabBar": {
