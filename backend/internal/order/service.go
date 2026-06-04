@@ -7,16 +7,18 @@ import (
 	"time"
 
 	"cau-used-goods-app/backend/internal/db"
+	"cau-used-goods-app/backend/internal/message"
 	"cau-used-goods-app/backend/internal/product"
 )
 
 type Service struct {
 	repo    *Repository
 	product *product.Service
+	message *message.Service
 }
 
-func NewService(repo *Repository, productService *product.Service) *Service {
-	return &Service{repo: repo, product: productService}
+func NewService(repo *Repository, productService *product.Service, messageService *message.Service) *Service {
+	return &Service{repo: repo, product: productService, message: messageService}
 }
 
 type CreateOrderInput struct {
@@ -80,6 +82,19 @@ func (s *Service) Create(ctx context.Context, input CreateOrderInput) (*Order, e
 		return nil, err
 	}
 
+	// 发送订单创建消息通知卖家
+	if s.message != nil {
+		relatedType := message.RelatedTypeOrder
+		_, _ = s.message.Create(ctx, message.CreateMessageInput{
+			ReceiverID:  sellerID,
+			MessageType: message.MessageTypeOrderCreated,
+			Title:       "新订单提醒",
+			Content:     fmt.Sprintf("您的商品「%s」有新的订单，买家已预约，请尽快确认。", title),
+			RelatedType: &relatedType,
+			RelatedID:   &order.ID,
+		})
+	}
+
 	return order, nil
 }
 
@@ -109,6 +124,19 @@ func (s *Service) Confirm(ctx context.Context, input ConfirmOrderInput) (*Order,
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// 发送订单确认消息通知买家
+	if s.message != nil {
+		relatedType := message.RelatedTypeOrder
+		_, _ = s.message.Create(ctx, message.CreateMessageInput{
+			ReceiverID:  order.BuyerID,
+			MessageType: message.MessageTypeOrderConfirmed,
+			Title:       "订单已确认",
+			Content:     fmt.Sprintf("卖家已确认您的订单「%s」，请按约定时间地点交易。", order.ProductTitleSnapshot),
+			RelatedType: &relatedType,
+			RelatedID:   &order.ID,
+		})
 	}
 
 	return s.repo.GetByID(ctx, input.OrderID)
@@ -151,6 +179,23 @@ func (s *Service) Cancel(ctx context.Context, input CancelOrderInput) (*Order, e
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// 发送订单取消消息通知对方
+	if s.message != nil {
+		relatedType := message.RelatedTypeOrder
+		receiverID := order.BuyerID
+		if input.UserID == order.BuyerID {
+			receiverID = order.SellerID
+		}
+		_, _ = s.message.Create(ctx, message.CreateMessageInput{
+			ReceiverID:  receiverID,
+			MessageType: message.MessageTypeOrderCanceled,
+			Title:       "订单已取消",
+			Content:     fmt.Sprintf("订单「%s」已被取消，原因：%s", order.ProductTitleSnapshot, input.Reason),
+			RelatedType: &relatedType,
+			RelatedID:   &order.ID,
+		})
 	}
 
 	return s.repo.GetByID(ctx, input.OrderID)
@@ -196,6 +241,19 @@ func (s *Service) Complete(ctx context.Context, input CompleteOrderInput) (*Orde
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// 发送订单完成消息通知买家
+	if s.message != nil {
+		relatedType := message.RelatedTypeOrder
+		_, _ = s.message.Create(ctx, message.CreateMessageInput{
+			ReceiverID:  order.BuyerID,
+			MessageType: message.MessageTypeOrderConfirmed,
+			Title:       "交易完成",
+			Content:     fmt.Sprintf("订单「%s」已完成交易，欢迎评价。", order.ProductTitleSnapshot),
+			RelatedType: &relatedType,
+			RelatedID:   &order.ID,
+		})
 	}
 
 	return s.repo.GetByID(ctx, input.OrderID)
@@ -286,6 +344,28 @@ func (s *Service) CancelExpiredOrders(ctx context.Context) (int, error) {
 		if err != nil {
 			continue
 		}
+
+		// 发送超时取消消息通知买卖双方
+		if s.message != nil {
+			relatedType := message.RelatedTypeOrder
+			_, _ = s.message.Create(ctx, message.CreateMessageInput{
+				ReceiverID:  order.BuyerID,
+				MessageType: message.MessageTypeOrderTimeout,
+				Title:       "订单超时取消",
+				Content:     fmt.Sprintf("订单「%s」因超时未确认，已自动取消。", order.ProductTitleSnapshot),
+				RelatedType: &relatedType,
+				RelatedID:   &order.ID,
+			})
+			_, _ = s.message.Create(ctx, message.CreateMessageInput{
+				ReceiverID:  order.SellerID,
+				MessageType: message.MessageTypeOrderTimeout,
+				Title:       "订单超时取消",
+				Content:     fmt.Sprintf("订单「%s」因超时未确认，已自动取消。", order.ProductTitleSnapshot),
+				RelatedType: &relatedType,
+				RelatedID:   &order.ID,
+			})
+		}
+
 		cancelled++
 	}
 	return cancelled, nil

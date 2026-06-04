@@ -97,3 +97,13 @@ func (h *Handler) ReportOverview(c *gin.Context) {
 
 	response.Success(c, result)
 }
+
+func (h *Handler) AppealOverview(c *gin.Context) {
+	result, err := h.service.AppealOverview(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
+		return
+	}
+
+	response.Success(c, result)
+}

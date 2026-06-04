@@ -31,6 +31,18 @@ type StudentVerification struct {
 	AccountStatus string  `json:"accountStatus"`
 }
 
+type AdminUserItem struct {
+	ID            uint64  `json:"id"`
+	Nickname      *string `json:"nickname"`
+	Phone         *string `json:"phone"`
+	Role          string  `json:"role"`
+	AuthStatus    string  `json:"authStatus"`
+	AccountStatus string  `json:"accountStatus"`
+	StudentID     *string `json:"studentId"`
+	RealName      *string `json:"realName"`
+	College       *string `json:"college"`
+}
+
 type Repository struct {
 	db *sql.DB
 }
@@ -174,6 +186,43 @@ ORDER BY update_time DESC`
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate student verifications: %w", err)
+	}
+	return items, nil
+}
+
+func (r *Repository) ListUsers(ctx context.Context) ([]AdminUserItem, error) {
+	const query = `
+SELECT id, nickname, phone, role, auth_status, account_status, student_id, real_name, college
+FROM users
+WHERE is_deleted = 0
+ORDER BY update_time DESC, id DESC`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]AdminUserItem, 0)
+	for rows.Next() {
+		var item AdminUserItem
+		if err := rows.Scan(
+			&item.ID,
+			&item.Nickname,
+			&item.Phone,
+			&item.Role,
+			&item.AuthStatus,
+			&item.AccountStatus,
+			&item.StudentID,
+			&item.RealName,
+			&item.College,
+		); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate users: %w", err)
 	}
 	return items, nil
 }

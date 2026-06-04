@@ -12,6 +12,7 @@ GET /stats/products/trend?days=7
 GET /stats/orders/overview
 GET /stats/users/overview
 GET /stats/reports/overview
+GET /stats/appeals/overview
 ```
 
 说明：
@@ -165,6 +166,30 @@ userReports
 orderReports
 ```
 
+### 2.9 申诉总览
+
+```powershell
+Invoke-RestMethod `
+  -Method Get `
+  -Uri "$baseUrl/stats/appeals/overview" `
+  -Headers $adminHeaders
+```
+
+预期字段：
+
+```text
+totalAppeals
+pendingAppeals
+processingAppeals
+approvedAppeals
+rejectedAppeals
+closedAppeals
+productAppeals
+userAppeals
+orderAppeals
+reportAppeals
+```
+
 ## 三、权限测试
 
 ### 3.1 普通用户不能访问统计接口
@@ -226,6 +251,7 @@ try {
 - GET /stats/orders/overview
 - GET /stats/users/overview
 - GET /stats/reports/overview
+- GET /stats/appeals/overview
 
 测试结果：
 - 管理员鉴权正常
@@ -235,6 +261,7 @@ try {
 - 订单统计正常
 - 用户统计正常
 - 举报统计正常
+- 申诉统计正常
 
 结论：后台统计接口测试通过
 ```
