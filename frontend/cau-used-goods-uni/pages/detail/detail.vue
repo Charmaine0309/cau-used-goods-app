@@ -9,7 +9,7 @@
 
     <view class="card">
       <view class="price-line">
-        <text class="price">￥{{ product.priceText }}</text>
+        <text class="price">¥{{ product.priceText }}</text>
         <text class="status">{{ statusText }}</text>
       </view>
       <view class="title">{{ product.title }}</view>
@@ -55,14 +55,13 @@ import { onLoad } from '@dcloudio/uni-app'
 import {
   addFavorite,
   checkFavorite,
-  createOrder,
-  createReport,
   getProductById,
   listCategories,
   removeFavorite
 } from '../../api/product'
 import { buildCategoryMap, formatProduct, getStatusText } from '../../utils/product-format'
 import { getToken, isVerifiedUser } from '../../utils/auth'
+import { navigate } from '../../utils/navigation'
 
 const product = ref(null)
 const isFavorite = ref(false)
@@ -102,50 +101,13 @@ const toggleFavorite = async () => {
 }
 
 const reserve = () => {
-  if (!ensureVerified()) return
-
-  uni.showModal({
-    title: '提交预约',
-    editable: true,
-    placeholderText: '可填写预约备注',
-    success: async ({ confirm, content }) => {
-      if (!confirm) return
-
-      try {
-        await createOrder({
-          productId: product.value.id,
-          remark: content || '',
-          meetLocation: product.value.meetLocation || ''
-        })
-        uni.showToast({ title: '预约已提交', icon: 'success' })
-      } catch (error) {
-        uni.showToast({ title: error.message || '预约失败', icon: 'none' })
-      }
-    }
-  })
+  if (!ensureVerified() || !product.value?.id) return
+  navigate('/pages/order/appointment', { productId: product.value.id })
 }
 
 const report = () => {
-  if (!ensureVerified()) return
-
-  uni.showModal({
-    title: '举报商品',
-    editable: true,
-    placeholderText: '请简要说明举报原因',
-    success: async ({ confirm, content }) => {
-      if (!confirm || !content?.trim()) return
-
-      try {
-        await createReport({
-          productId: product.value.id,
-          reason: content.trim()
-        })
-        uni.showToast({ title: '举报已提交', icon: 'success' })
-      } catch (error) {
-        uni.showToast({ title: error.message || '举报失败', icon: 'none' })
-      }
-    }
-  })
+  if (!ensureVerified() || !product.value?.id) return
+  navigate('/pages/interaction/report', { targetType: 'PRODUCT', targetId: product.value.id })
 }
 
 onLoad(async ({ id }) => {

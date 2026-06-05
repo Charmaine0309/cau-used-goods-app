@@ -11,13 +11,17 @@
     </view>
 
     <view class="menu-card">
-      <view v-if="!isAdmin" class="menu-item" @click="goMyProducts">我发布的</view>
-      <view v-if="!isAdmin" class="menu-item" @click="goSoldOrders">我卖出的</view>
-      <view v-if="!isAdmin" class="menu-item" @click="goBoughtOrders">我买到的</view>
-      <view v-if="!isAdmin" class="menu-item" @click="goPublish">发布闲置商品</view>
-      <view v-if="!isAdmin" class="menu-item" @click="goStudentAuth">学生认证</view>
-      <view v-if="!isAdmin" class="menu-item" @click="goAddress">地址管理</view>
-      <view v-if="isAdmin" class="menu-item" @click="goAdmin">后台管理</view>
+      <view v-if="!isAdmin" class="menu-item" @click="goMyProducts">我发布的<text>›</text></view>
+      <view v-if="!isAdmin" class="menu-item" @click="goPublish">发布闲置商品<text>›</text></view>
+      <view v-if="!isAdmin" class="menu-item" @click="goSoldOrders">我卖出的<text>›</text></view>
+      <view v-if="!isAdmin" class="menu-item" @click="goBoughtOrders">我买到的<text>›</text></view>
+      <view v-if="!isAdmin" class="menu-item" @click="goOrderList">我的订单<text>›</text></view>
+      <view v-if="!isAdmin" class="menu-item" @click="goFavorites">我的收藏<text>›</text></view>
+      <view v-if="!isAdmin" class="menu-item" @click="goMessages">消息中心<text>›</text></view>
+      <view v-if="!isAdmin" class="menu-item" @click="goReportList">我的举报<text>›</text></view>
+      <view v-if="!isAdmin" class="menu-item" @click="goStudentAuth">学生认证<text>›</text></view>
+      <view v-if="!isAdmin" class="menu-item" @click="goAddress">地址管理<text>›</text></view>
+      <view v-if="isAdmin" class="menu-item" @click="goAdmin">后台管理<text>›</text></view>
     </view>
 
     <button class="logout-button" @click="logout">退出登录</button>
@@ -29,8 +33,8 @@ import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getCurrentUser } from '../../api/auth'
 import { clearAuth, getUser, setUser } from '../../utils/auth'
+import { BASE_URL } from '../../utils/request'
 
-const BASE_URL = 'http://127.0.0.1:8080'
 const user = ref(getUser() || {})
 
 const authMap = {
@@ -72,6 +76,10 @@ const goPublish = () => uni.switchTab({ url: '/pages/publish/publish' })
 const goStudentAuth = () => uni.navigateTo({ url: '/pages/student-auth/student-auth' })
 const goAddress = () => uni.navigateTo({ url: '/pages/address/address' })
 const goAdmin = () => uni.navigateTo({ url: '/pages/admin/admin' })
+const goOrderList = () => uni.navigateTo({ url: '/pages/order/list' })
+const goFavorites = () => uni.navigateTo({ url: '/pages/interaction/favorites' })
+const goMessages = () => uni.switchTab({ url: '/pages/messages/messages' })
+const goReportList = () => uni.navigateTo({ url: '/pages/interaction/report-list' })
 
 const logout = () => {
   clearAuth()
@@ -139,6 +147,9 @@ const logout = () => {
 }
 
 .menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   height: 104rpx;
   line-height: 104rpx;
   padding: 0 28rpx;
@@ -146,10 +157,16 @@ const logout = () => {
   color: #1f2933;
   font-size: 30rpx;
   font-weight: 600;
+  box-sizing: border-box;
 }
 
 .menu-item:last-child {
   border-bottom: 0;
+}
+
+.menu-item text {
+  color: #b2bdca;
+  font-size: 38rpx;
 }
 
 .logout-button {

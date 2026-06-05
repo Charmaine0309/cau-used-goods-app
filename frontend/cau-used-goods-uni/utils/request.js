@@ -6,6 +6,16 @@ const getErrorMessage = (body, fallback) => {
   return body && body.message ? body.message : fallback
 }
 
+const buildQuery = (data = {}) => {
+  const parts = []
+  Object.keys(data || {}).forEach((key) => {
+    const value = data[key]
+    if (value === undefined || value === null || value === '') return
+    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+  })
+  return parts.length ? `?${parts.join('&')}` : ''
+}
+
 export const request = ({
   url,
   method = 'GET',
@@ -23,11 +33,15 @@ export const request = ({
     requestHeader.Authorization = `Bearer ${token}`
   }
 
+  const finalURL = method === 'GET' && data && Object.keys(data).length
+    ? `${BASE_URL}${url}${url.includes('?') ? '&' + buildQuery(data).slice(1) : buildQuery(data)}`
+    : `${BASE_URL}${url}`
+
   return new Promise((resolve, reject) => {
     uni.request({
-      url: `${BASE_URL}${url}`,
+      url: finalURL,
       method,
-      data,
+      data: method === 'GET' ? {} : data,
       header: requestHeader,
       success: (res) => {
         const body = res.data || {}
@@ -88,4 +102,12 @@ export const uploadFile = ({
       fail: () => reject(new Error('图片上传失败，请检查网络后重试'))
     })
   })
+}
+
+export const uploadImage = async (filePath) => {
+  const result = await uploadFile({
+    url: '/upload/image',
+    filePath
+  })
+  return result?.url || result?.imageUrl || result?.path || result
 }
