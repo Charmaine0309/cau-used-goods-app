@@ -1,77 +1,81 @@
 <template>
   <view class="page">
-    <view class="top-row">
-      <view class="page-title">CAU二手交易平台</view>
-      <button class="mine-button" size="mini" @click="goMine">我的</button>
+    <view class="hero">
+      <text class="eyebrow">CAU CAMPUS MARKET</text>
+      <text class="headline">让闲置，在校园里重新发光</text>
+      <view class="search" @click="goSearch">搜索教材、数码、生活用品</view>
     </view>
 
-    <view class="search-box" @click="goSearch">
-      搜索二手商品
+    <view class="section-head">
+      <text class="section-title">逛分类</text>
+      <text class="muted">快速找到需要的好物</text>
     </view>
 
-    <view class="section-title">商品分类</view>
-
-    <view class="category-list">
-      <view class="category-item" @click="goCategory(1)">教材资料</view>
-      <view class="category-item" @click="goCategory(2)">电子产品</view>
-      <view class="category-item" @click="goCategory(3)">生活用品</view>
-      <view class="category-item" @click="goCategory(5)">运动户外</view>
-    </view>
-
-    <view class="section-title">最新商品</view>
-
-    <view class="goods-list">
-      <view
-        class="goods-card"
-        v-for="item in goodsList"
-        :key="item.id"
-        @click="goDetail(item.id)"
-      >
-        <image v-if="item.image" class="goods-image" :src="item.image" mode="aspectFill" />
-        <view v-else class="goods-image placeholder">{{ item.categoryName || '商品' }}</view>
-        <view class="goods-info">
-          <view class="goods-title">{{ item.title }}</view>
-          <view class="goods-desc">{{ conditionText(item.conditionLevel) }}</view>
-          <view class="goods-price">￥{{ item.price }}</view>
+    <scroll-view scroll-x class="category-scroll">
+      <view class="category-row">
+        <view
+          v-for="item in visibleCategories"
+          :key="item.id"
+          class="category"
+          @click="goCategory(item.id)"
+        >
+          <view class="category-icon">{{ item.name.slice(0, 2) }}</view>
+          <text>{{ item.name }}</text>
         </view>
       </view>
+    </scroll-view>
+
+    <view class="section-head">
+      <text class="section-title">新鲜发布</text>
+      <text class="more" @click="goSearch">筛选排序 ›</text>
     </view>
 
-    <view v-if="!loading && goodsList.length === 0" class="empty">暂无在售商品</view>
+    <view v-if="products.length" class="grid">
+      <ProductCard v-for="item in products" :key="item.id" :product="item" />
+    </view>
+
+    <view v-else-if="!loading" class="empty-state">暂时没有在售商品</view>
+    <view class="load-state">{{ loading ? '正在加载...' : finished ? '已经到底啦' : '' }}</view>
   </view>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
-import { listProducts } from '../../api/product'
+import { computed, ref } from 'vue'
+import { onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
+import ProductCard from '../../components/ProductCard.vue'
+import { listCategories, listProducts } from '../../api/product'
+import { buildCategoryMap, formatProduct } from '../../utils/product-format'
 
-const goodsList = ref([])
+const categories = ref([])
+const rawProducts = ref([])
+const page = ref(1)
+const total = ref(0)
 const loading = ref(false)
 
-const categoryNameMap = {
-  1: '教材资料',
-  2: '电子产品',
-  3: '生活用品',
-  4: '服饰鞋包',
-  5: '运动户外',
-  6: '其他'
+const products = computed(() => rawProducts.value.map((item) => formatProduct(item, buildCategoryMap(categories.value))))
+const visibleCategories = computed(() => categories.value.filter((item) => Number(item.id) !== 0))
+const finished = computed(() => rawProducts.value.length >= total.value && total.value > 0)
+
+const loadCategories = async () => {
+  categories.value = await listCategories()
 }
 
-const loadProducts = async () => {
+const loadProducts = async (reset = false) => {
+  if (loading.value || (!reset && finished.value)) return
+
   loading.value = true
   try {
+    const nextPage = reset ? 1 : page.value
     const result = await listProducts({
-      status: 'ON_SALE',
-      page: 1,
-      pageSize: 20,
+      page: nextPage,
+      pageSize: 8,
       sort: 'newest'
     })
-    goodsList.value = (result?.list || []).map((item) => ({
-      ...item,
-      image: item.images?.[0] || '',
-      categoryName: categoryNameMap[item.categoryId] || '商品'
-    }))
+
+    const list = result.list || []
+    rawProducts.value = reset ? list : rawProducts.value.concat(list)
+    total.value = result.total || 0
+    page.value = nextPage + 1
   } catch (error) {
     uni.showToast({ title: error.message || '商品加载失败', icon: 'none' })
   } finally {
@@ -79,161 +83,138 @@ const loadProducts = async () => {
   }
 }
 
-onShow(loadProducts)
-
-const conditionText = (level) => {
-  const map = {
-    NEW: '全新',
-    LIKE_NEW: '九成新',
-    GOOD: '八成新',
-    FAIR: '七成新',
-    OLD: '旧物'
+const refresh = async () => {
+  try {
+    await loadCategories()
+    await loadProducts(true)
+  } finally {
+    uni.stopPullDownRefresh()
   }
-  return map[level] || level || '成色未填写'
 }
 
-const goSearch = () => {
-  uni.navigateTo({
-    url: '/pages/search/search'
-  })
-}
+const goSearch = () => uni.navigateTo({ url: '/pages/search/search' })
+const goCategory = (categoryId) => uni.navigateTo({ url: `/pages/category/category?categoryId=${categoryId}` })
 
-const goCategory = (categoryId) => {
-  uni.navigateTo({
-    url: `/pages/category/category?categoryId=${categoryId}`
-  })
-}
+onShow(() => {
+  if (!rawProducts.value.length || uni.getStorageSync('PRODUCT_LIST_DIRTY')) {
+    uni.removeStorageSync('PRODUCT_LIST_DIRTY')
+    refresh()
+  }
+})
 
-const goDetail = (id) => {
-  uni.navigateTo({
-    url: `/pages/detail/detail?id=${id}`
-  })
-}
-
-const goMine = () => {
-  uni.navigateTo({
-    url: '/pages/index/index'
-  })
-}
+onReachBottom(() => loadProducts())
+onPullDownRefresh(refresh)
 </script>
 
 <style scoped>
 .page {
   min-height: 100vh;
-  padding: 32rpx;
-  background: #f6f7f9;
-  box-sizing: border-box;
+  padding-bottom: 36rpx;
 }
 
-.top-row {
+.hero {
+  padding: 92rpx 30rpx 34rpx;
+  border-radius: 0 0 40rpx 40rpx;
+  background: linear-gradient(145deg, #1f6a49, #328660);
+  color: #fff;
+}
+
+.eyebrow,
+.headline {
+  display: block;
+}
+
+.eyebrow {
+  color: rgba(255,255,255,.7);
+  font-size: 20rpx;
+  letter-spacing: 3rpx;
+}
+
+.headline {
+  margin-top: 14rpx;
+  font-size: 38rpx;
+  font-weight: 700;
+}
+
+.search {
+  margin-top: 30rpx;
+  padding: 24rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  color: #9ca7a3;
+}
+
+.section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24rpx;
-}
-
-.page-title {
-  font-size: 38rpx;
-  font-weight: 700;
-  color: #1f2933;
-}
-
-.mine-button {
-  background: #ffffff;
-  color: #17a84b;
-}
-
-.search-box {
-  height: 72rpx;
-  line-height: 72rpx;
-  padding: 0 28rpx;
-  border-radius: 36rpx;
-  background: #ffffff;
-  color: #9ca3af;
-  font-size: 28rpx;
+  padding: 32rpx 28rpx 18rpx;
 }
 
 .section-title {
-  margin-top: 36rpx;
-  margin-bottom: 20rpx;
-  font-size: 34rpx;
+  color: #26342f;
+  font-size: 32rpx;
   font-weight: 700;
-  color: #1f2933;
 }
 
-.category-list {
+.muted,
+.load-state {
+  color: #929c98;
+  font-size: 23rpx;
+}
+
+.more {
+  color: #23734f;
+  font-size: 25rpx;
+}
+
+.category-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.category-row {
+  display: inline-flex;
+  gap: 18rpx;
+  padding: 2rpx 28rpx 8rpx;
+}
+
+.category {
+  width: 128rpx;
+  color: #65706c;
+  font-size: 23rpx;
+  text-align: center;
+}
+
+.category-icon {
+  display: flex;
+  width: 96rpx;
+  height: 96rpx;
+  margin: 0 auto 10rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 28rpx;
+  background: #e6f3eb;
+  color: #23734f;
+  font-weight: 700;
+}
+
+.grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 20rpx;
+  padding: 0 28rpx;
 }
 
-.category-item {
-  height: 96rpx;
-  line-height: 96rpx;
-  border-radius: 16rpx;
-  background: #ffffff;
-  text-align: center;
+.empty-state {
+  margin: 80rpx 28rpx 0;
+  color: #929c98;
   font-size: 28rpx;
-  color: #374151;
-}
-
-.goods-list {
-  display: flex;
-  flex-direction: column;
-  gap: 20rpx;
-}
-
-.goods-card {
-  display: flex;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  background: #ffffff;
-}
-
-.goods-image {
-  width: 140rpx;
-  height: 140rpx;
-  border-radius: 12rpx;
-  background: #d1d5db;
-  flex-shrink: 0;
-}
-
-.placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #7b8794;
-  font-size: 24rpx;
-}
-
-.goods-info {
-  margin-left: 24rpx;
-  flex: 1;
-}
-
-.goods-title {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #1f2933;
-}
-
-.goods-desc {
-  margin-top: 16rpx;
-  font-size: 24rpx;
-  color: #6b7280;
-}
-
-.goods-price {
-  margin-top: 20rpx;
-  font-size: 32rpx;
-  font-weight: 700;
-  color: #e11d48;
-}
-
-.empty {
-  margin-top: 40rpx;
   text-align: center;
-  color: #98a2b3;
-  font-size: 28rpx;
+}
+
+.load-state {
+  padding: 28rpx;
+  text-align: center;
 }
 </style>

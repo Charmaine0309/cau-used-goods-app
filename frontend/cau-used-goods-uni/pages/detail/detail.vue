@@ -1,216 +1,319 @@
 <template>
-  <view class="page">
-    <image v-if="mainImage" class="goods-image" :src="mainImage" mode="aspectFill" />
-    <view v-else class="goods-image placeholder">{{ categoryName }}</view>
+  <view v-if="product" class="page">
+    <swiper v-if="product.images && product.images.length" class="gallery" indicator-dots circular>
+      <swiper-item v-for="image in product.images" :key="image">
+        <image class="gallery-image" :src="image" mode="aspectFill" />
+      </swiper-item>
+    </swiper>
+    <view v-else class="gallery placeholder">暂无图片</view>
 
-    <view class="info-card">
-      <view class="title">{{ product.title || '商品详情' }}</view>
-      <view class="price">￥{{ product.price || 0 }}</view>
-      <view class="meta">分类：{{ categoryName }}</view>
-      <view class="meta">成色：{{ conditionText(product.conditionLevel) }}</view>
-      <view class="meta">发布时间：{{ product.createTime || '暂无' }}</view>
-      <view class="meta">交易地点：{{ product.meetLocation || '线下面交' }}</view>
+    <view class="card">
+      <view class="price-line">
+        <text class="price">￥{{ product.priceText }}</text>
+        <text class="status">{{ statusText }}</text>
+      </view>
+      <view class="title">{{ product.title }}</view>
+      <view class="meta">{{ product.conditionText }} · {{ product.viewCount || 0 }} 次浏览 · {{ product.timeText }}</view>
     </view>
 
-    <view class="info-card">
+    <view class="card">
       <view class="section-title">商品描述</view>
-      <view class="desc">{{ product.description || '暂无商品描述' }}</view>
+      <view class="description">{{ product.description || '卖家暂未填写描述' }}</view>
     </view>
 
-    <view class="info-card">
-      <view class="section-title">卖家信息</view>
-      <view class="meta">卖家编号：{{ product.sellerId || '-' }}</view>
-      <view class="meta">联系方式需预约后在订单详情中查看</view>
+    <view class="card">
+      <view class="section-title">面交信息</view>
+      <view class="description">建议地点：{{ product.meetLocation || '预约后协商' }}</view>
+      <view class="privacy">为保护隐私，联系方式仅在预约进入待面交后向交易双方展示。</view>
     </view>
 
-    <view class="button-row">
-      <button class="plain-button" @click="favorite">收藏</button>
-      <button class="main-button" @click="reserve">提交预约</button>
-      <button class="danger-button" @click="report">举报</button>
+    <view class="card seller">
+      <view class="avatar">{{ (product.seller?.nickname || '卖').slice(0, 1) }}</view>
+      <view>
+        <view class="seller-name">{{ product.seller?.nickname || 'CAU 同学' }}</view>
+        <view class="meta">{{ product.seller?.college || '中国农业大学' }}</view>
+      </view>
     </view>
+
+    <view class="bottom">
+      <button class="minor" @click="toggleFavorite">{{ favoriteText }}</button>
+      <button class="minor report" @click="report">举报</button>
+      <button class="primary" :disabled="product.status !== 'ON_SALE'" @click="reserve">
+        {{ product.status === 'ON_SALE' ? '提交预约' : statusText }}
+      </button>
+    </view>
+  </view>
+
+  <view v-else class="page loading-page">
+    <view class="load-text">正在加载商品详情...</view>
   </view>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { addFavorite, createOrder, createReport, getProductById } from '../../api/product'
+import {
+  addFavorite,
+  checkFavorite,
+  createOrder,
+  createReport,
+  getProductById,
+  listCategories,
+  removeFavorite
+} from '../../api/product'
+import { buildCategoryMap, formatProduct, getStatusText } from '../../utils/product-format'
+import { getToken, isVerifiedUser } from '../../utils/auth'
 
-const product = ref({})
+const product = ref(null)
+const isFavorite = ref(false)
 
-const categoryNameMap = {
-  1: '教材资料',
-  2: '电子产品',
-  3: '生活用品',
-  4: '服饰鞋包',
-  5: '运动户外',
-  6: '其他'
+const statusText = computed(() => getStatusText(product.value?.status))
+const favoriteText = computed(() => isFavorite.value ? '已收藏' : '收藏')
+
+const ensureVerified = () => {
+  if (!getToken()) {
+    uni.navigateTo({ url: '/pages/login/login' })
+    return false
+  }
+
+  if (!isVerifiedUser()) {
+    uni.navigateTo({ url: '/pages/student-auth/student-auth' })
+    return false
+  }
+
+  return true
 }
 
-const categoryName = computed(() => categoryNameMap[product.value?.categoryId] || '商品')
-const mainImage = computed(() => product.value?.images?.[0] || '')
+const toggleFavorite = async () => {
+  if (!ensureVerified()) return
 
-onLoad((query = {}) => {
-  loadProduct(query.id)
-})
+  try {
+    if (isFavorite.value) {
+      await removeFavorite(product.value.id)
+    } else {
+      await addFavorite(product.value.id)
+    }
 
-const loadProduct = async (id) => {
+    isFavorite.value = !isFavorite.value
+    uni.showToast({ title: isFavorite.value ? '收藏成功' : '已取消收藏', icon: 'success' })
+  } catch (error) {
+    uni.showToast({ title: error.message || '收藏操作失败', icon: 'none' })
+  }
+}
+
+const reserve = () => {
+  if (!ensureVerified()) return
+
+  uni.showModal({
+    title: '提交预约',
+    editable: true,
+    placeholderText: '可填写预约备注',
+    success: async ({ confirm, content }) => {
+      if (!confirm) return
+
+      try {
+        await createOrder({
+          productId: product.value.id,
+          remark: content || '',
+          meetLocation: product.value.meetLocation || ''
+        })
+        uni.showToast({ title: '预约已提交', icon: 'success' })
+      } catch (error) {
+        uni.showToast({ title: error.message || '预约失败', icon: 'none' })
+      }
+    }
+  })
+}
+
+const report = () => {
+  if (!ensureVerified()) return
+
+  uni.showModal({
+    title: '举报商品',
+    editable: true,
+    placeholderText: '请简要说明举报原因',
+    success: async ({ confirm, content }) => {
+      if (!confirm || !content?.trim()) return
+
+      try {
+        await createReport({
+          productId: product.value.id,
+          reason: content.trim()
+        })
+        uni.showToast({ title: '举报已提交', icon: 'success' })
+      } catch (error) {
+        uni.showToast({ title: error.message || '举报失败', icon: 'none' })
+      }
+    }
+  })
+}
+
+onLoad(async ({ id }) => {
   if (!id) {
     uni.showToast({ title: '商品不存在', icon: 'none' })
     return
   }
+
   try {
-    product.value = await getProductById(id)
+    const [detail, categories] = await Promise.all([
+      getProductById(id),
+      listCategories()
+    ])
+
+    product.value = formatProduct(detail, buildCategoryMap(categories))
+
+    if (getToken()) {
+      isFavorite.value = (await checkFavorite(id)).favorited
+    }
   } catch (error) {
     uni.showToast({ title: error.message || '商品加载失败', icon: 'none' })
   }
-}
-
-const conditionText = (level) => {
-  const map = {
-    NEW: '全新',
-    LIKE_NEW: '九成新',
-    GOOD: '八成新',
-    FAIR: '七成新',
-    OLD: '旧物'
-  }
-  return map[level] || level || '成色未填写'
-}
-
-const favorite = async () => {
-  try {
-    await addFavorite(product.value.id)
-    uni.showToast({ title: '已收藏', icon: 'success' })
-  } catch (error) {
-    uni.showToast({ title: error.message || '收藏失败', icon: 'none' })
-  }
-}
-
-const reserve = async () => {
-  try {
-    await createOrder({
-      productId: product.value.id,
-      meetTime: '',
-      meetLocation: product.value.meetLocation || '线下面交',
-      remark: ''
-    })
-    uni.showToast({ title: '预约已提交', icon: 'success' })
-  } catch (error) {
-    uni.showToast({ title: error.message || '预约失败', icon: 'none' })
-  }
-}
-
-const report = async () => {
-  try {
-    await createReport({
-      targetType: 'PRODUCT',
-      targetId: product.value.id,
-      reasonType: 'OTHER',
-      description: '用户提交商品举报'
-    })
-    uni.showToast({ title: '举报已提交', icon: 'success' })
-  } catch (error) {
-    uni.showToast({ title: error.message || '举报失败', icon: 'none' })
-  }
-}
+})
 </script>
 
 <style scoped>
 .page {
   min-height: 100vh;
-  padding: 32rpx;
-  padding-bottom: 140rpx;
-  background: #f6f7f9;
-  box-sizing: border-box;
+  padding-bottom: 130rpx;
 }
 
-.goods-image {
-  height: 420rpx;
-  border-radius: 20rpx;
-  background: #d1d5db;
+.gallery,
+.gallery-image {
+  width: 100%;
+  height: 600rpx;
+  background: #e8efeb;
 }
 
 .placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #7b8794;
-  font-size: 30rpx;
+  color: #9aa5a1;
+  font-size: 28rpx;
 }
 
-.info-card {
-  margin-top: 24rpx;
-  padding: 28rpx;
-  border-radius: 16rpx;
-  background: #ffffff;
+.card {
+  margin: 20rpx;
+  padding: 24rpx;
+  border-radius: 18rpx;
+  background: #fff;
 }
 
-.title {
-  font-size: 38rpx;
-  font-weight: 700;
-  color: #1f2933;
+.price-line,
+.seller {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .price {
-  margin-top: 20rpx;
-  font-size: 42rpx;
+  color: #e36a3e;
+  font-size: 46rpx;
   font-weight: 700;
-  color: #e11d48;
+}
+
+.status {
+  padding: 8rpx 14rpx;
+  border-radius: 999rpx;
+  background: #e7f4ec;
+  color: #23734f;
+  font-size: 23rpx;
+}
+
+.title {
+  margin-top: 14rpx;
+  font-size: 36rpx;
+  font-weight: 700;
 }
 
 .meta {
-  margin-top: 16rpx;
-  font-size: 26rpx;
-  color: #6b7280;
+  margin-top: 14rpx;
+  color: #89938f;
+  font-size: 23rpx;
 }
 
-.section-title {
-  font-size: 32rpx;
+.section-title,
+.seller-name {
   font-weight: 700;
-  color: #1f2933;
 }
 
-.desc {
+.description,
+.privacy {
   margin-top: 16rpx;
+  color: #58645f;
   line-height: 1.7;
-  font-size: 28rpx;
-  color: #374151;
 }
 
-.button-row {
+.privacy {
+  color: #9a7745;
+  font-size: 23rpx;
+}
+
+.seller {
+  justify-content: flex-start;
+}
+
+.avatar {
+  display: flex;
+  width: 80rpx;
+  height: 80rpx;
+  margin-right: 16rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #e7f4ec;
+  color: #23734f;
+  font-weight: 700;
+}
+
+.bottom {
   position: fixed;
-  left: 0;
   right: 0;
   bottom: 0;
+  left: 0;
   display: flex;
-  gap: 16rpx;
-  padding: 20rpx 32rpx;
-  background: #ffffff;
-  box-sizing: border-box;
+  gap: 14rpx;
+  padding: 16rpx 20rpx calc(16rpx + env(safe-area-inset-bottom));
+  background: #fff;
 }
 
-.plain-button,
-.main-button,
-.danger-button {
-  flex: 1;
-  height: 76rpx;
-  line-height: 76rpx;
-  border-radius: 12rpx;
+.minor,
+.primary {
+  height: 74rpx;
+  border-radius: 999rpx;
   font-size: 26rpx;
+  line-height: 74rpx;
 }
 
-.plain-button {
-  background: #f3f4f6;
-  color: #374151;
+.minor {
+  width: 132rpx;
+  background: #edf4f1;
+  color: #23734f;
 }
 
-.main-button {
-  background: #1aad19;
-  color: #ffffff;
+.report {
+  color: #b85d45;
 }
 
-.danger-button {
-  background: #fee2e2;
-  color: #dc2626;
+.primary {
+  flex: 1;
+  background: #23734f;
+  color: #fff;
+}
+
+.primary[disabled] {
+  background: #b8c5c0;
+  color: #fff;
+}
+
+.loading-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.load-text {
+  color: #929c98;
+  font-size: 26rpx;
 }
 </style>

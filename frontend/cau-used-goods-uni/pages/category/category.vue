@@ -1,57 +1,45 @@
 <template>
   <view class="page">
-    <view class="title">{{ categoryTitle }}</view>
+    <view class="header">
+      <text class="title">{{ categoryName }}</text>
+      <text class="muted">共 {{ total }} 件商品</text>
+    </view>
 
     <view class="sort-row">
-      <view
+      <text
         v-for="item in sortOptions"
         :key="item.value"
-        :class="['sort-item', sort === item.value ? 'active' : '']"
+        class="sort"
+        :class="{ active: sort === item.value }"
         @click="changeSort(item.value)"
       >
         {{ item.label }}
-      </view>
+      </text>
     </view>
 
-    <view class="goods-list">
-      <view
-        class="goods-card"
-        v-for="item in goodsList"
-        :key="item.id"
-        @click="goDetail(item.id)"
-      >
-        <image v-if="item.image" class="goods-image" :src="item.image" mode="aspectFill" />
-        <view v-else class="goods-image placeholder">{{ item.categoryName || '商品' }}</view>
-        <view class="goods-info">
-          <view class="goods-title">{{ item.title }}</view>
-          <view class="goods-desc">{{ conditionText(item.conditionLevel) }}</view>
-          <view class="goods-price">￥{{ item.price }}</view>
-        </view>
-      </view>
+    <view v-if="products.length" class="grid">
+      <ProductCard v-for="item in products" :key="item.id" :product="item" />
     </view>
 
-    <view v-if="!loading && goodsList.length === 0" class="empty">暂无在售商品</view>
+    <view v-else-if="!loading" class="empty-state">这个分类暂时没有在售商品</view>
+    <view class="load-state">{{ loading ? '正在加载...' : finished && products.length ? '已经到底啦' : '' }}</view>
   </view>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
-import { listProducts } from '../../api/product'
+import { onLoad, onReachBottom } from '@dcloudio/uni-app'
+import ProductCard from '../../components/ProductCard.vue'
+import { listCategories, listProducts } from '../../api/product'
+import { buildCategoryMap, formatProduct } from '../../utils/product-format'
 
-const goodsList = ref([])
-const loading = ref(false)
+const categories = ref([])
+const rawProducts = ref([])
 const categoryId = ref(0)
 const sort = ref('newest')
-
-const categoryNameMap = {
-  1: '教材资料',
-  2: '电子产品',
-  3: '生活用品',
-  4: '服饰鞋包',
-  5: '运动户外',
-  6: '其他'
-}
+const page = ref(1)
+const total = ref(0)
+const loading = ref(false)
 
 const sortOptions = [
   { label: '最新发布', value: 'newest' },
@@ -59,28 +47,28 @@ const sortOptions = [
   { label: '价格最高', value: 'price_desc' }
 ]
 
-const categoryTitle = computed(() => categoryNameMap[categoryId.value] || '分类商品')
+const categoryMap = computed(() => buildCategoryMap(categories.value))
+const categoryName = computed(() => categoryMap.value[categoryId.value] || '分类商品')
+const products = computed(() => rawProducts.value.map((item) => formatProduct(item, categoryMap.value)))
+const finished = computed(() => rawProducts.value.length >= total.value && total.value > 0)
 
-onLoad((query = {}) => {
-  categoryId.value = Number(query.categoryId || 0)
-  loadProducts()
-})
+const loadProducts = async (reset = false) => {
+  if (loading.value || (!reset && finished.value)) return
 
-const loadProducts = async () => {
   loading.value = true
   try {
+    const nextPage = reset ? 1 : page.value
     const result = await listProducts({
       categoryId: categoryId.value,
-      status: 'ON_SALE',
-      page: 1,
-      pageSize: 20,
-      sort: sort.value
+      sort: sort.value,
+      page: nextPage,
+      pageSize: 8
     })
-    goodsList.value = (result?.list || []).map((item) => ({
-      ...item,
-      image: item.images?.[0] || '',
-      categoryName: categoryNameMap[item.categoryId] || '商品'
-    }))
+
+    const list = result.list || []
+    rawProducts.value = reset ? list : rawProducts.value.concat(list)
+    total.value = result.total || 0
+    page.value = nextPage + 1
   } catch (error) {
     uni.showToast({ title: error.message || '商品加载失败', icon: 'none' })
   } finally {
@@ -91,121 +79,81 @@ const loadProducts = async () => {
 const changeSort = (value) => {
   if (sort.value === value) return
   sort.value = value
-  loadProducts()
+  loadProducts(true)
 }
 
-const conditionText = (level) => {
-  const map = {
-    NEW: '全新',
-    LIKE_NEW: '九成新',
-    GOOD: '八成新',
-    FAIR: '七成新',
-    OLD: '旧物'
+onLoad(async (options) => {
+  categoryId.value = Number(options.categoryId || 0)
+  try {
+    categories.value = await listCategories()
+    loadProducts(true)
+  } catch (error) {
+    uni.showToast({ title: error.message || '分类加载失败', icon: 'none' })
   }
-  return map[level] || level || '成色未填写'
-}
+})
 
-const goDetail = (id) => {
-  uni.navigateTo({
-    url: `/pages/detail/detail?id=${id}`
-  })
-}
+onReachBottom(() => loadProducts())
 </script>
 
 <style scoped>
 .page {
   min-height: 100vh;
-  padding: 32rpx;
-  background: #f6f7f9;
+  padding: 28rpx;
   box-sizing: border-box;
 }
 
+.header,
+.sort-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .title {
-  font-size: 40rpx;
+  font-size: 38rpx;
   font-weight: 700;
-  color: #1f2933;
+}
+
+.muted,
+.load-state {
+  color: #929c98;
+  font-size: 23rpx;
 }
 
 .sort-row {
-  display: flex;
-  gap: 16rpx;
-  margin-top: 28rpx;
-  margin-bottom: 28rpx;
+  gap: 14rpx;
+  padding: 24rpx 0;
 }
 
-.sort-item {
+.sort {
   flex: 1;
-  height: 64rpx;
-  line-height: 64rpx;
-  border-radius: 12rpx;
-  background: #ffffff;
+  padding: 14rpx 0;
+  border-radius: 14rpx;
+  background: #fff;
+  color: #65706c;
   text-align: center;
-  font-size: 26rpx;
-  color: #374151;
 }
 
-.sort-item.active {
-  background: #1aad19;
-  color: #ffffff;
+.sort.active {
+  background: #23734f;
+  color: #fff;
 }
 
-.goods-list {
-  display: flex;
-  flex-direction: column;
-  gap: 20rpx;
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18rpx;
 }
 
-.goods-card {
-  display: flex;
-  padding: 20rpx;
-  border-radius: 16rpx;
-  background: #ffffff;
-}
-
-.goods-image {
-  width: 140rpx;
-  height: 140rpx;
-  border-radius: 12rpx;
-  background: #d1d5db;
-  flex-shrink: 0;
-}
-
-.placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #7b8794;
-  font-size: 24rpx;
-}
-
-.goods-info {
-  margin-left: 24rpx;
-  flex: 1;
-}
-
-.goods-title {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #1f2933;
-}
-
-.goods-desc {
-  margin-top: 16rpx;
-  font-size: 24rpx;
-  color: #6b7280;
-}
-
-.goods-price {
-  margin-top: 20rpx;
-  font-size: 32rpx;
-  font-weight: 700;
-  color: #e11d48;
-}
-
-.empty {
-  margin-top: 40rpx;
-  text-align: center;
-  color: #98a2b3;
+.empty-state {
+  margin-top: 120rpx;
+  color: #929c98;
   font-size: 28rpx;
+  text-align: center;
+}
+
+.load-state {
+  padding: 28rpx;
+  text-align: center;
 }
 </style>
