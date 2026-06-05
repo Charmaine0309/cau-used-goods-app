@@ -46,9 +46,7 @@
       </view>
     </view>
 
-    <view v-if="filteredItems.length === 0" class="empty">
-      {{ emptyText }}
-    </view>
+    <view v-if="filteredItems.length === 0" class="empty">{{ emptyText }}</view>
 
     <view v-for="item in filteredItems" :key="item.id" class="case-card" @click="toggleOpen(item.id)">
       <view class="card-head">
@@ -114,52 +112,61 @@
           />
         </view>
 
-        <view v-if="item.handleResult" class="handle-result">
-          {{ item.handleResult }}
-        </view>
+        <view v-if="item.handleResult" class="handle-result">{{ item.handleResult }}</view>
 
         <view v-if="canHandle(item.status)" class="actions">
-          <button
-            v-if="item.status === 'PENDING'"
-            size="mini"
-            class="process"
-            @click.stop="handleCurrent(item.id, 'PROCESSING')"
-          >
+          <button v-if="item.status === 'PENDING'" size="mini" class="process" @click.stop="handleCurrent(item.id, 'PROCESSING')">
             开始处理
           </button>
-          <button
-            v-if="activeMode === 'REPORT'"
-            size="mini"
-            class="pass"
-            @click.stop="handleCurrent(item.id, 'RESOLVED')"
-          >
+          <button v-if="activeMode === 'REPORT'" size="mini" class="pass" @click.stop="handleCurrent(item.id, 'RESOLVED')">
             处理完成
           </button>
-          <button
-            v-if="activeMode === 'REPORT'"
-            size="mini"
-            class="reject"
-            @click.stop="handleCurrent(item.id, 'REJECTED')"
-          >
+          <button v-if="activeMode === 'REPORT'" size="mini" class="reject" @click.stop="openReasonModal(item.id, 'REJECTED')">
             驳回
           </button>
-          <button
-            v-if="activeMode === 'APPEAL'"
-            size="mini"
-            class="pass"
-            @click.stop="handleCurrent(item.id, 'APPROVED')"
-          >
+          <button v-if="activeMode === 'APPEAL'" size="mini" class="pass" @click.stop="handleCurrent(item.id, 'APPROVED')">
             通过申诉
           </button>
-          <button
-            v-if="activeMode === 'APPEAL'"
-            size="mini"
-            class="reject"
-            @click.stop="handleCurrent(item.id, 'REJECTED')"
-          >
+          <button v-if="activeMode === 'APPEAL'" size="mini" class="reject" @click.stop="openReasonModal(item.id, 'REJECTED')">
             驳回申诉
           </button>
-          <button size="mini" class="close" @click.stop="handleCurrent(item.id, 'CLOSED')">关闭</button>
+          <button size="mini" class="close" @click.stop="openReasonModal(item.id, 'CLOSED')">关闭</button>
+        </view>
+      </view>
+    </view>
+
+    <view v-if="reasonModal.visible" class="modal-mask" @click="closeReasonModal">
+      <view class="reason-sheet" @click.stop>
+        <view class="sheet-head">
+          <view>
+            <view class="sheet-title">{{ reasonModalTitle }}</view>
+            <view class="sheet-subtitle">选择一个原因，也可以补充更具体的说明</view>
+          </view>
+          <text class="sheet-close" @click="closeReasonModal">×</text>
+        </view>
+
+        <view class="reason-list">
+          <view
+            v-for="reason in currentReasonOptions"
+            :key="reason"
+            :class="['reason-chip', reasonModal.reason === reason ? 'active' : '']"
+            @click="reasonModal.reason = reason"
+          >
+            {{ reason }}
+          </view>
+        </view>
+
+        <textarea
+          v-model="reasonModal.note"
+          class="reason-input"
+          maxlength="200"
+          placeholder="补充说明，可不填"
+          placeholder-class="reason-placeholder"
+        />
+
+        <view class="sheet-actions">
+          <button class="sheet-button cancel" @click="closeReasonModal">取消</button>
+          <button class="sheet-button confirm" :loading="submittingReason" @click="submitReasonAction">确认处理</button>
         </view>
       </view>
     </view>
@@ -167,7 +174,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import {
   getAdminAppeals,
@@ -184,6 +191,15 @@ const openedId = ref(null)
 const reports = ref([])
 const appeals = ref([])
 const productMap = ref({})
+const submittingReason = ref(false)
+const reasonModal = reactive({
+  visible: false,
+  id: 0,
+  status: '',
+  mode: 'REPORT',
+  reason: '',
+  note: ''
+})
 
 const reportFilters = [
   { label: '全部', value: 'ALL' },
@@ -196,6 +212,37 @@ const appealFilters = [
   ...reportFilters,
   { label: '举报', value: 'REPORT' }
 ]
+
+const reasonOptions = {
+  REPORT_REJECTED: [
+    '证据不足，无法认定违规',
+    '举报内容与对象不符',
+    '未发现明显违规行为',
+    '重复举报或恶意举报',
+    '商品信息已修改，风险已解除'
+  ],
+  REPORT_CLOSED: [
+    '重复举报，合并处理',
+    '相关对象已通过其他方式处理',
+    '举报人撤回或无法继续核实',
+    '不属于平台举报受理范围',
+    '已转人工跟进，暂时关闭'
+  ],
+  APPEAL_REJECTED: [
+    '申诉材料不足',
+    '原举报处理结论无误',
+    '未提供有效证明',
+    '申诉理由与处理结果无关',
+    '存在重复申诉'
+  ],
+  APPEAL_CLOSED: [
+    '重复申诉，合并处理',
+    '申诉人撤回或无法联系',
+    '关联举报已关闭',
+    '已线下处理，关闭申诉',
+    '不属于申诉受理范围'
+  ]
+}
 
 const currentItems = computed(() => activeMode.value === 'REPORT' ? reports.value : appeals.value)
 const currentFilters = computed(() => activeMode.value === 'REPORT' ? reportFilters : appealFilters)
@@ -214,6 +261,17 @@ const emptyText = computed(() => {
   const type = activeTarget.value === 'ALL' ? '全部' : targetText(activeTarget.value)
   const noun = activeMode.value === 'REPORT' ? '举报' : '申诉'
   return `当前没有${type}${noun}记录`
+})
+
+const reasonModalTitle = computed(() => {
+  const action = reasonModal.status === 'REJECTED' ? '驳回' : '关闭'
+  const noun = reasonModal.mode === 'REPORT' ? '举报' : '申诉'
+  return `${action}${noun}`
+})
+
+const currentReasonOptions = computed(() => {
+  const key = `${reasonModal.mode}_${reasonModal.status}`
+  return reasonOptions[key] || []
 })
 
 watch(activeMode, () => {
@@ -353,6 +411,50 @@ const canHandle = (status) => {
 
 const previewImage = (current, urls) => {
   uni.previewImage({ current, urls })
+}
+
+const openReasonModal = (id, status) => {
+  reasonModal.visible = true
+  reasonModal.id = id
+  reasonModal.status = status
+  reasonModal.mode = activeMode.value
+  reasonModal.reason = ''
+  reasonModal.note = ''
+}
+
+const closeReasonModal = () => {
+  if (submittingReason.value) return
+  reasonModal.visible = false
+}
+
+const buildHandleResult = (reason, note) => {
+  const extra = String(note || '').trim()
+  return extra ? `${reason}。补充说明：${extra}` : reason
+}
+
+const submitReasonAction = async () => {
+  if (!reasonModal.reason) {
+    uni.showToast({ title: '请选择处理原因', icon: 'none' })
+    return
+  }
+  if (submittingReason.value) return
+  submittingReason.value = true
+  try {
+    const handleResult = buildHandleResult(reasonModal.reason, reasonModal.note)
+    if (reasonModal.mode === 'REPORT') {
+      await handleAdminReport(reasonModal.id, reasonModal.status, handleResult)
+    } else {
+      await handleAdminAppeal(reasonModal.id, reasonModal.status, handleResult)
+    }
+    uni.showToast({ title: '处理成功', icon: 'success' })
+    reasonModal.visible = false
+    openedId.value = null
+    load()
+  } catch (error) {
+    uni.showToast({ title: error.message || '处理失败', icon: 'none' })
+  } finally {
+    submittingReason.value = false
+  }
 }
 
 const handleCurrent = async (id, status) => {
@@ -724,5 +826,118 @@ const handleCurrent = async (id, status) => {
   background: #f8fafc;
   color: #667085;
   font-size: 24rpx;
+}
+
+.modal-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 99;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.reason-sheet {
+  width: 100%;
+  padding: 30rpx 28rpx 36rpx;
+  border-radius: 28rpx 28rpx 0 0;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.sheet-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #1f2933;
+}
+
+.sheet-subtitle {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #8a96a8;
+}
+
+.sheet-close {
+  flex-shrink: 0;
+  width: 54rpx;
+  height: 54rpx;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #667085;
+  font-size: 42rpx;
+  line-height: 50rpx;
+  text-align: center;
+}
+
+.reason-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  margin-top: 26rpx;
+}
+
+.reason-chip {
+  padding: 14rpx 18rpx;
+  border-radius: 999rpx;
+  background: #f8fafc;
+  color: #475467;
+  font-size: 24rpx;
+  border: 2rpx solid transparent;
+}
+
+.reason-chip.active {
+  border-color: #17a84b;
+  background: #f0fdf4;
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.reason-input {
+  width: 100%;
+  min-height: 150rpx;
+  margin-top: 24rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  background: #f8fafc;
+  font-size: 26rpx;
+  color: #1f2933;
+  box-sizing: border-box;
+}
+
+.reason-placeholder {
+  color: #98a2b3;
+}
+
+.sheet-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18rpx;
+  margin-top: 24rpx;
+}
+
+.sheet-button {
+  height: 84rpx;
+  line-height: 84rpx;
+  border-radius: 14rpx;
+  font-size: 28rpx;
+}
+
+.sheet-button.cancel {
+  background: #f8fafc;
+  color: #667085;
+}
+
+.sheet-button.confirm {
+  background: #17a84b;
+  color: #fff;
 }
 </style>

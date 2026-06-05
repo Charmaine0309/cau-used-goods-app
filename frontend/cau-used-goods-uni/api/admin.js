@@ -36,6 +36,14 @@ export const createAdminCategory = (payload) => {
   })
 }
 
+export const updateAdminCategoryStatus = (categoryId, status) => {
+  return request({
+    url: `/admin/categories/${categoryId}/status`,
+    method: 'PUT',
+    data: { status }
+  })
+}
+
 export const getProductStatusDistribution = () => {
   return request({ url: '/stats/products/status-distribution' })
 }
@@ -82,7 +90,7 @@ export const reviewStudentVerification = (userId, payload) => {
 
 export const getAdminLogs = () => {
   return request({
-    url: '/admin/logs?page=1&pageSize=10'
+    url: '/admin/logs?page=1&pageSize=50'
   })
 }
 

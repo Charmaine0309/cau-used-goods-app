@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"cau-used-goods-app/backend/internal/admin"
 	"cau-used-goods-app/backend/internal/db"
 	"cau-used-goods-app/backend/internal/message"
 	"cau-used-goods-app/backend/internal/product"
@@ -143,9 +144,9 @@ func (s *Service) Confirm(ctx context.Context, input ConfirmOrderInput) (*Order,
 }
 
 type CancelOrderInput struct {
-	OrderID  uint64
-	UserID   uint64
-	Reason   string
+	OrderID uint64
+	UserID  uint64
+	Reason  string
 }
 
 func (s *Service) Cancel(ctx context.Context, input CancelOrderInput) (*Order, error) {
@@ -287,6 +288,46 @@ func (s *Service) ExceptionClose(ctx context.Context, input ExceptionCloseOrderI
 			return err
 		}
 		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return s.repo.GetByID(ctx, input.OrderID)
+}
+
+func (s *Service) AdminExceptionClose(ctx context.Context, input ExceptionCloseOrderInput) (*Order, error) {
+	order, err := s.repo.GetByID(ctx, input.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	if order == nil {
+		return nil, fmt.Errorf("order not found")
+	}
+	if order.Status != "PENDING_CONFIRM" && order.Status != "WAIT_MEET" {
+		return nil, fmt.Errorf("order cannot be exception closed")
+	}
+	if input.Reason == "" {
+		input.Reason = "admin exception close order"
+	}
+
+	now := time.Now().Format("2006-01-02 15:04:05")
+	err = db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.product.UnlockProduct(ctx, order.ProductID); err != nil {
+			return err
+		}
+		if err := s.repo.UpdateStatus(ctx, tx, input.OrderID, "EXCEPTION_CLOSED", map[string]interface{}{
+			"cancel_reason": input.Reason,
+			"cancel_by":     input.UserID,
+			"close_time":    now,
+		}); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, create_time)
+			VALUES (?, ?, 'ORDER', ?, ?, NOW())
+		`, input.UserID, admin.OperationOrderExceptionClose, input.OrderID, input.Reason)
+		return err
 	})
 	if err != nil {
 		return nil, err

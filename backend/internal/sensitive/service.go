@@ -110,7 +110,7 @@ func (s *Service) CreateWord(ctx context.Context, adminID uint64, input CreateWo
 	}
 
 	description := fmt.Sprintf("create sensitive word: %s", input.Word)
-	if err := s.logAdminAction(ctx, adminID, admin.OperationCreateWord, id, description, ipAddress); err != nil {
+	if err := s.logAdminAction(ctx, adminID, admin.OperationWordCreate, id, description, ipAddress); err != nil {
 		return 0, err
 	}
 	return id, nil
@@ -143,7 +143,7 @@ func (s *Service) DeleteWord(ctx context.Context, adminID, id uint64, ipAddress 
 	}
 
 	description := "disable sensitive word by delete operation"
-	return s.logAdminAction(ctx, adminID, admin.OperationDeleteWord, id, description, ipAddress)
+	return s.logAdminAction(ctx, adminID, admin.OperationWordDisable, id, description, ipAddress)
 }
 
 func (s *Service) logAdminAction(ctx context.Context, adminID uint64, operationType string, targetID uint64, description string, ipAddress *string) error {

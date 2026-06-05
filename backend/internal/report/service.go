@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"cau-used-goods-app/backend/internal/admin"
 	"cau-used-goods-app/backend/internal/message"
 	"cau-used-goods-app/backend/internal/sensitive"
 )
@@ -182,11 +183,11 @@ func (s *Service) logAdminAction(ctx context.Context, adminID, reportID uint64, 
 	var actionType string
 	switch status {
 	case "RESOLVED":
-		actionType = "REPORT_RESOLVE"
+		actionType = admin.OperationReportResolve
 	case "REJECTED":
-		actionType = "REPORT_REJECT"
+		actionType = admin.OperationReportReject
 	case "CLOSED":
-		actionType = "REPORT_CLOSE"
+		actionType = admin.OperationReportClose
 	default:
 		actionType = "REPORT_HANDLE"
 	}
@@ -197,9 +198,9 @@ func (s *Service) logAdminAction(ctx context.Context, adminID, reportID uint64, 
 	}
 
 	query := `
-		INSERT INTO admin_logs (admin_id, target_type, target_id, action_type, detail)
-		VALUES (?, 'REPORT', ?, ?, ?)
+		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, create_time)
+		VALUES (?, ?, 'REPORT', ?, ?, NOW())
 	`
-	_, err := s.db.ExecContext(ctx, query, adminID, reportID, actionType, result)
+	_, err := s.db.ExecContext(ctx, query, adminID, actionType, reportID, result)
 	return err
 }

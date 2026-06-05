@@ -4,7 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMiddleware gin.HandlerFunc) {
+func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMiddleware, adminMiddleware gin.HandlerFunc) {
 	group := r.Group("/orders")
 	group.Use(authMiddleware, verifiedMiddleware)
 	{
@@ -19,8 +19,9 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMid
 
 	// 管理员清理超时订单
 	adminGroup := r.Group("/admin/orders")
-	adminGroup.Use(authMiddleware)
+	adminGroup.Use(authMiddleware, adminMiddleware)
 	{
 		adminGroup.POST("/cleanup-expired", handler.CancelExpired)
+		adminGroup.POST("/:id/exception-close", handler.AdminExceptionClose)
 	}
 }

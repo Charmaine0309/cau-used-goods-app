@@ -16,9 +16,15 @@
         <view class="tag-name">{{ item.name }}</view>
         <view class="tag-desc">排序 {{ item.sortOrder || 0 }}</view>
       </view>
-      <view :class="['tag-status', item.status === 'ENABLED' ? 'enabled' : 'disabled']">
-        {{ item.status === 'ENABLED' ? '启用' : '停用' }}
-      </view>
+      <button
+        class="tag-status"
+        :class="item.status === 'ENABLED' ? 'enabled' : 'disabled'"
+        :loading="updatingId === item.id"
+        :disabled="updatingId === item.id"
+        @click.stop="toggleStatus(item)"
+      >
+        {{ item.status === 'ENABLED' ? '停用' : '启用' }}
+      </button>
     </view>
   </view>
 </template>
@@ -26,10 +32,11 @@
 <script setup>
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { createAdminCategory, getAdminCategories } from '../../api/admin'
+import { createAdminCategory, getAdminCategories, updateAdminCategoryStatus } from '../../api/admin'
 
 const categories = ref([])
 const submitting = ref(false)
+const updatingId = ref(null)
 const form = ref({
   name: '',
   sortOrder: ''
@@ -65,6 +72,21 @@ const submit = async () => {
     uni.showToast({ title: error.message || '添加失败', icon: 'none' })
   } finally {
     submitting.value = false
+  }
+}
+
+const toggleStatus = async (item) => {
+  if (!item || updatingId.value) return
+  const nextStatus = item.status === 'ENABLED' ? 'DISABLED' : 'ENABLED'
+  updatingId.value = item.id
+  try {
+    await updateAdminCategoryStatus(item.id, nextStatus)
+    uni.showToast({ title: nextStatus === 'ENABLED' ? '已启用' : '已停用', icon: 'success' })
+    await load()
+  } catch (error) {
+    uni.showToast({ title: error.message || '操作失败', icon: 'none' })
+  } finally {
+    updatingId.value = null
   }
 }
 </script>
@@ -145,18 +167,26 @@ const submit = async () => {
 }
 
 .tag-status {
+  min-width: 96rpx;
+  margin: 0;
   padding: 8rpx 16rpx;
+  border: 0;
   border-radius: 999rpx;
   font-size: 22rpx;
+  line-height: 1.4;
+}
+
+.tag-status::after {
+  border: 0;
 }
 
 .tag-status.enabled {
-  background: #dcfce7;
-  color: #16a34a;
+  background: #fee2e2;
+  color: #ef4444;
 }
 
 .tag-status.disabled {
-  background: #eef2f6;
-  color: #667085;
+  background: #dcfce7;
+  color: #16a34a;
 }
 </style>

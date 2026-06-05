@@ -67,6 +67,12 @@ func (h *Handler) AdminListCategories(c *gin.Context) {
 }
 
 func (h *Handler) AdminCreateCategory(c *gin.Context) {
+	adminID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
 	var req createCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
@@ -74,6 +80,7 @@ func (h *Handler) AdminCreateCategory(c *gin.Context) {
 	}
 
 	id, err := h.service.CreateCategory(c.Request.Context(), CategoryCreateInput{
+		AdminID:   adminID,
 		Name:      req.Name,
 		ParentID:  req.ParentID,
 		SortOrder: req.SortOrder,
@@ -87,6 +94,12 @@ func (h *Handler) AdminCreateCategory(c *gin.Context) {
 }
 
 func (h *Handler) AdminUpdateCategory(c *gin.Context) {
+	adminID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
@@ -100,6 +113,7 @@ func (h *Handler) AdminUpdateCategory(c *gin.Context) {
 	}
 
 	if err := h.service.UpdateCategory(c.Request.Context(), CategoryUpdateInput{
+		AdminID:   adminID,
 		ID:        id,
 		Name:      req.Name,
 		ParentID:  req.ParentID,
@@ -113,6 +127,12 @@ func (h *Handler) AdminUpdateCategory(c *gin.Context) {
 }
 
 func (h *Handler) AdminUpdateCategoryStatus(c *gin.Context) {
+	adminID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
@@ -125,7 +145,7 @@ func (h *Handler) AdminUpdateCategoryStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.UpdateCategoryStatus(c.Request.Context(), id, req.Status); err != nil {
+	if err := h.service.UpdateCategoryStatus(c.Request.Context(), adminID, id, req.Status); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
@@ -136,13 +156,19 @@ func (h *Handler) AdminUpdateCategoryStatus(c *gin.Context) {
 }
 
 func (h *Handler) AdminDeleteCategory(c *gin.Context) {
+	adminID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
 		return
 	}
 
-	if err := h.service.UpdateCategoryStatus(c.Request.Context(), id, "DISABLED"); err != nil {
+	if err := h.service.UpdateCategoryStatus(c.Request.Context(), adminID, id, "DISABLED"); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}

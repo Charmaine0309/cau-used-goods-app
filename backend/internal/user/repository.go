@@ -227,6 +227,47 @@ ORDER BY update_time DESC, id DESC`
 	return items, nil
 }
 
+func (r *Repository) UpdateAccountStatus(ctx context.Context, adminID, userID uint64, accountStatus, operationType, reason string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin update account status tx: %w", err)
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	result, err := tx.ExecContext(ctx, `
+UPDATE users
+SET account_status = ?, update_time = NOW()
+WHERE id = ? AND is_deleted = 0`, accountStatus, userID)
+	if err != nil {
+		return fmt.Errorf("update account status: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get update account status affected rows: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("用户不存在")
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, create_time)
+VALUES (?, ?, 'USER', ?, ?, NOW())`, adminID, operationType, userID, reason); err != nil {
+		return fmt.Errorf("create account status admin log: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit update account status tx: %w", err)
+	}
+	committed = true
+	return nil
+}
+
 func (r *Repository) ReviewStudentVerification(ctx context.Context, adminID uint64, userID uint64, authStatus string, description string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {

@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"cau-used-goods-app/backend/internal/admin"
 )
 
 const (
-	accountStatusNormal = "NORMAL"
-	authStatusPending   = "PENDING"
-	authStatusVerified  = "VERIFIED"
-	authStatusRejected  = "REJECTED"
+	accountStatusNormal   = "NORMAL"
+	accountStatusDisabled = "DISABLED"
+	authStatusPending     = "PENDING"
+	authStatusVerified    = "VERIFIED"
+	authStatusRejected    = "REJECTED"
 )
 
 var (
@@ -39,6 +42,12 @@ type ReviewStudentVerificationInput struct {
 	UserID      uint64
 	AuthStatus  string
 	Description string
+}
+
+type UpdateAccountStatusInput struct {
+	UserID        uint64
+	AccountStatus string
+	Reason        string
 }
 
 func NewService(repo *Repository) *Service {
@@ -184,6 +193,51 @@ func (s *Service) ListStudentVerifications(ctx context.Context, status string) (
 
 func (s *Service) ListUsers(ctx context.Context) ([]AdminUserItem, error) {
 	return s.repo.ListUsers(ctx)
+}
+
+func (s *Service) UpdateAccountStatus(ctx context.Context, adminID uint64, input UpdateAccountStatusInput) (*User, error) {
+	if adminID == 0 {
+		return nil, fmt.Errorf("adminId is required")
+	}
+	if input.UserID == 0 {
+		return nil, fmt.Errorf("userId is required")
+	}
+	if input.UserID == adminID {
+		return nil, fmt.Errorf("管理员不能禁用或启用自己")
+	}
+
+	input.AccountStatus = strings.TrimSpace(input.AccountStatus)
+	input.Reason = strings.TrimSpace(input.Reason)
+	if input.AccountStatus != accountStatusNormal && input.AccountStatus != accountStatusDisabled {
+		return nil, fmt.Errorf("accountStatus must be NORMAL or DISABLED")
+	}
+	if input.Reason == "" {
+		if input.AccountStatus == accountStatusDisabled {
+			input.Reason = "管理员禁用用户"
+		} else {
+			input.Reason = "管理员启用用户"
+		}
+	}
+	if len([]rune(input.Reason)) > 500 {
+		return nil, fmt.Errorf("原因不能超过 500 个字符")
+	}
+
+	target, err := s.repo.FindByID(ctx, input.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if target == nil {
+		return nil, fmt.Errorf("用户不存在")
+	}
+
+	operationType := admin.OperationUserEnable
+	if input.AccountStatus == accountStatusDisabled {
+		operationType = admin.OperationUserDisable
+	}
+	if err := s.repo.UpdateAccountStatus(ctx, adminID, input.UserID, input.AccountStatus, operationType, input.Reason); err != nil {
+		return nil, err
+	}
+	return s.Me(ctx, input.UserID)
 }
 
 func (s *Service) ReviewStudentVerification(ctx context.Context, adminID uint64, input ReviewStudentVerificationInput) (*StudentVerification, error) {

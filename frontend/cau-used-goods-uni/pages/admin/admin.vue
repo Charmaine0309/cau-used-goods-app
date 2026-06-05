@@ -745,10 +745,28 @@ const categoryOnSaleBarStyle = (item) => {
 .row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 20rpx;
   padding: 24rpx 28rpx;
   border-bottom: 1rpx solid #eef0f3;
   font-size: 28rpx;
   color: #475467;
+}
+
+.row text:first-child {
+  flex: 1;
+}
+
+.row text:last-child {
+  min-width: 52rpx;
+  height: 44rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  background: #f0fdf4;
+  color: #16a34a;
+  font-weight: 700;
+  line-height: 44rpx;
+  text-align: center;
 }
 
 .row:last-child {
