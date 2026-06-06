@@ -4,19 +4,19 @@
 
 ## 微信开发者工具运行
 
-在上一级 `frontend/` 目录执行：
+使用 HBuilderX 打开 `frontend/cau-used-goods-uni`，执行：
 
 ```bash
-npm run build:mp-weixin:cau
+运行 -> 运行到小程序模拟器 -> 微信开发者工具
 ```
 
-然后在微信开发者工具中导入：
+然后在微信开发者工具中重新编译。没有 HBuilderX 时，可临时导入仓库中已有的编译产物：
 
 ```text
-frontend/cau-used-goods-uni/unpackage/dist/build/mp-weixin
+frontend/cau-used-goods-uni/unpackage/dist/dev/mp-weixin
 ```
 
-不要直接导入 `frontend/cau-used-goods-uni` 源码目录。微信开发者工具需要编译后生成的 `app.json`。
+注意：`unpackage/` 是旧编译产物，不作为协作修改重点；源码改动后必须用 HBuilderX 重新编译。
 
 ## 已实现功能
 
@@ -34,9 +34,8 @@ GET    /categories
 GET    /products
 GET    /products/:id
 POST   /products
-POST   /upload/products
-POST   /ai/optimize-title
-POST   /ai/generate-description
+POST   /upload/image
+POST   /ai/optimize-product
 POST   /favorites
 DELETE /favorites/:productId
 GET    /favorites/check?productId=:productId
@@ -56,7 +55,7 @@ keyword categoryId minPrice maxPrice conditionLevel sort page pageSize
 {
   "code": 0,
   "data": {
-    "imageUrl": "/uploads/products/example.jpg"
+    "url": "/uploads/products/example.jpg"
   }
 }
 ```

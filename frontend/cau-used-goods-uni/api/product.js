@@ -120,22 +120,39 @@ export const uploadProductImage = async (filePath) => {
   }
 }
 
-export const optimizeProductTitle = async ({ title, description = '' }) => {
+function buildAiDescription({ description = '', categoryName = '', conditionLevel = '', meetLocation = '' } = {}) {
+  const details = []
+  if (description) details.push(`商品描述：${description}`)
+  if (categoryName) details.push(`商品分类：${categoryName}`)
+  if (conditionLevel) details.push(`商品成色：${conditionLevel}`)
+  if (meetLocation) details.push(`建议面交地点：${meetLocation}`)
+  return details.join('\n')
+}
+
+export const optimizeProductTitle = async (payload = {}) => {
+  const { title } = payload
   const result = await request({
     url: '/ai/optimize-product',
     method: 'POST',
-    data: { title, description }
+    data: {
+      title,
+      description: buildAiDescription(payload)
+    }
   })
   return {
     titles: result.optimizedTitle ? [result.optimizedTitle] : [title]
   }
 }
 
-export const generateProductDescription = async ({ title, description = '' }) => {
+export const generateProductDescription = async (payload = {}) => {
+  const { title, description = '' } = payload
   const result = await request({
     url: '/ai/optimize-product',
     method: 'POST',
-    data: { title, description }
+    data: {
+      title,
+      description: buildAiDescription(payload)
+    }
   })
   return {
     description: result.optimizedDescription || description
