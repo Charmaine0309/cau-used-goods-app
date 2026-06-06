@@ -7,11 +7,11 @@
     <view class="card">
       <view class="field">
         <text class="field-label">期望面交时间</text>
-        <input v-model="form.meetTime" class="input" placeholder="例如：2026-06-03 18:30" />
+        <input v-model="form.meetTime" class="input appointment-input" placeholder="如：今天 18:30" />
       </view>
       <view class="field">
         <text class="field-label">面交地点</text>
-        <input v-model="form.meetLocation" class="input" placeholder="请输入校园内面交地点" />
+        <input v-model="form.meetLocation" class="input appointment-input" placeholder="如：东区图书馆门口" />
       </view>
       <view class="field">
         <text class="field-label">备注（选填）</text>
@@ -63,3 +63,7 @@ async function submit() {
   }
 }
 </script>
+
+<style scoped lang="scss">
+.appointment-input { min-height: 82rpx; line-height: 82rpx; }
+</style>
