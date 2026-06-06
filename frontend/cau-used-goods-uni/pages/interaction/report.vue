@@ -8,8 +8,8 @@
       </view>
       <view class="field">
         <text class="field-label">举报原因</text>
-        <picker :range="reasons" @change="form.reason = reasons[$event.detail.value]">
-          <view class="picker-value">{{ form.reason || '请选择举报原因' }}</view>
+        <picker :range="reasonLabels" @change="selectReason">
+          <view class="picker-value">{{ selectedReasonLabel || '请选择举报原因' }}</view>
         </picker>
       </view>
       <view class="field">
@@ -30,12 +30,21 @@
 
 <script setup>
 import { onLoad } from '@dcloudio/uni-app'
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import { tradeService } from '../../services/trade'
+import { REPORT_REASON } from '../../utils/constants'
 import { navigate, showError, showSuccess } from '../../utils/navigation'
 
-const reasons = ['商品描述不实', '疑似禁售品', '交易纠纷', '不文明行为', '其他问题']
-const form = reactive({ targetType: 'PRODUCT', targetId: '', reason: '', detail: '', images: [] })
+const reasons = [
+  { value: 'FAKE_PRODUCT', label: REPORT_REASON.FAKE_PRODUCT },
+  { value: 'INAPPROPRIATE_CONTENT', label: REPORT_REASON.INAPPROPRIATE_CONTENT },
+  { value: 'SCAM', label: REPORT_REASON.SCAM },
+  { value: 'TRADE_DISPUTE', label: REPORT_REASON.TRADE_DISPUTE },
+  { value: 'OTHER', label: REPORT_REASON.OTHER }
+]
+const reasonLabels = reasons.map((item) => item.label)
+const form = reactive({ targetType: 'PRODUCT', targetId: '', reasonType: '', detail: '', images: [] })
+const selectedReasonLabel = computed(() => reasons.find((item) => item.value === form.reasonType)?.label || '')
 
 onLoad((options) => {
   form.targetType = options.targetType || 'PRODUCT'
@@ -49,8 +58,12 @@ function chooseImage() {
   })
 }
 
+function selectReason(event) {
+  form.reasonType = reasons[event.detail.value]?.value || ''
+}
+
 async function submit() {
-  if (!form.reason || !form.detail.trim()) {
+  if (!form.reasonType || !form.detail.trim()) {
     showError(new Error('请选择举报原因并填写说明'))
     return
   }

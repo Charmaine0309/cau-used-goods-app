@@ -40,7 +40,7 @@ export const createReport = async (data) => {
     data: {
       targetType: data.targetType,
       targetId: Number(data.targetId),
-      reasonType: data.reason,
+      reasonType: data.reasonType || data.reason,
       description: data.detail,
       images
     }

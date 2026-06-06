@@ -8,8 +8,24 @@ export const ORDER_STATUS = {
 
 export const REPORT_STATUS = {
   PENDING: { label: '待处理', tone: 'warning' },
+  PROCESSING: { label: '处理中', tone: 'primary' },
   RESOLVED: { label: '已处理', tone: 'success' },
-  REJECTED: { label: '未采纳', tone: 'muted' }
+  REJECTED: { label: '未采纳', tone: 'muted' },
+  CLOSED: { label: '已关闭', tone: 'muted' }
+}
+
+export const REPORT_REASON = {
+  FAKE_PRODUCT: '商品描述不实',
+  INAPPROPRIATE_CONTENT: '违规内容',
+  SCAM: '疑似诈骗',
+  TRADE_DISPUTE: '交易纠纷',
+  OTHER: '其他问题'
+}
+
+export const TARGET_TYPE = {
+  PRODUCT: '商品',
+  ORDER: '交易订单',
+  USER: '用户'
 }
 
 export const MESSAGE_TYPE = {

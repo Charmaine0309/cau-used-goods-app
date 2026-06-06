@@ -1,5 +1,6 @@
 import { BASE_URL } from '../utils/request'
 import * as api from '../api/trade'
+import { REPORT_REASON, TARGET_TYPE } from '../utils/constants'
 
 function absoluteImage(url) {
   if (!url || /^https?:\/\//.test(url)) return url
@@ -68,8 +69,10 @@ export const tradeService = {
     ...item,
     id: String(item.id),
     reason: item.reasonType,
+    reasonLabel: REPORT_REASON[item.reasonType] || item.reasonType,
     detail: item.description,
     result: item.handleResult,
+    targetTypeLabel: TARGET_TYPE[item.targetType] || item.targetType,
     createdAt: item.createTime
   }))
 }

@@ -3,10 +3,10 @@
     <view v-if="reports.length">
       <view v-for="report in reports" :key="report.id" class="card report">
         <view class="report-head">
-          <text class="report-title">{{ report.reason }}</text>
+          <text class="report-title">{{ report.reasonLabel || report.reason }}</text>
           <StatusBadge :label="status(report.status).label" :tone="status(report.status).tone" />
         </view>
-        <text class="report-meta">{{ report.targetType }} · {{ report.targetId }} · {{ report.createdAt }}</text>
+        <text class="report-meta">{{ report.targetTypeLabel || report.targetType }} · {{ report.targetId }} · {{ report.createdAt }}</text>
         <text class="report-detail">{{ report.detail }}</text>
         <view v-if="report.result" class="result">处理结果：{{ report.result }}</view>
       </view>
