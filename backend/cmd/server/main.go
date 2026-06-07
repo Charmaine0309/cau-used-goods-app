@@ -118,7 +118,7 @@ func main() {
 	auth.RegisterRoutes(r, authHandler, authMiddleware, cfg.Server.Env == "dev")
 	user.RegisterRoutes(r, userHandler, authMiddleware)
 	user.RegisterAdminRoutes(r, userHandler, authMiddleware, adminMiddleware)
-	order.RegisterRoutes(r, orderHandler, authMiddleware, verifiedMiddleware)
+	order.RegisterRoutes(r, orderHandler, authMiddleware, verifiedMiddleware, adminMiddleware)
 	favorite.RegisterRoutes(r, favoriteHandler, authMiddleware, verifiedMiddleware)
 	review.RegisterRoutes(r, reviewHandler, authMiddleware, verifiedMiddleware)
 	report.RegisterRoutes(r, reportHandler, authMiddleware, verifiedMiddleware, adminMiddleware)

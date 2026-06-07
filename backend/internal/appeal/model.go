@@ -60,3 +60,9 @@ type HandleAppealInput struct {
 	HandleResult string
 	IPAddress    *string
 }
+
+type CloseAppealInput struct {
+	AppealID    uint64
+	AppellantID uint64
+	CloseReason string
+}

@@ -216,6 +216,45 @@ func (s *Service) UpdateProductStatus(ctx context.Context, productID uint64, sel
 	return s.repo.UpdateProductStatus(ctx, productID, sellerID, status, reason)
 }
 
+type AdminUpdateProductStatusInput struct {
+	AdminID   uint64
+	ProductID uint64
+	Status    string
+	Reason    string
+	IPAddress *string
+}
+
+func (s *Service) AdminUpdateProductStatus(ctx context.Context, input AdminUpdateProductStatusInput) error {
+	if input.AdminID == 0 {
+		return fmt.Errorf("adminId is required")
+	}
+	if input.ProductID == 0 {
+		return fmt.Errorf("productId is required")
+	}
+	input.Status = strings.ToUpper(strings.TrimSpace(input.Status))
+	input.Reason = strings.TrimSpace(input.Reason)
+	if input.IPAddress != nil {
+		trimmed := strings.TrimSpace(*input.IPAddress)
+		input.IPAddress = &trimmed
+	}
+	if !isValidAdminProductStatus(input.Status) {
+		return fmt.Errorf("status must be ON_SALE, OFF_SHELF, LOCKED, SOLD or DELETED")
+	}
+	if len([]rune(input.Reason)) > 500 {
+		return fmt.Errorf("reason cannot exceed 500 characters")
+	}
+	return s.repo.AdminUpdateProductStatus(ctx, input)
+}
+
+func isValidAdminProductStatus(status string) bool {
+	switch status {
+	case "ON_SALE", "OFF_SHELF", "LOCKED", "SOLD", "DELETED":
+		return true
+	default:
+		return false
+	}
+}
+
 type ProductImagesInput struct {
 	ProductID uint64
 	SellerID  uint64

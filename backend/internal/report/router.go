@@ -12,6 +12,7 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMid
 		group.POST("", handler.Create)
 		group.GET("/my", handler.ListMyReports)
 		group.GET("/:id", handler.GetByID)
+		group.POST("/:id/close", handler.Close)
 	}
 
 	// 管理员端
@@ -19,6 +20,7 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMid
 	adminGroup.Use(authMiddleware, adminMiddleware)
 	{
 		adminGroup.GET("", handler.ListAll)
+		adminGroup.POST("/:id/processing", handler.MarkProcessing)
 		adminGroup.POST("/:id/handle", handler.Handle)
 	}
 }

@@ -1,0 +1,394 @@
+# 王双媛 举报申诉状态流转与管理员后续处理开发说明
+
+## 一、改动目标
+
+本次调整围绕举报、申诉的处理边界，以及管理员后续处置接口展开。
+
+核心目标：
+
+- `CLOSED` 表示普通用户在管理员接手前主动关闭或撤回。
+- 管理员处理举报或申诉时，只能给出 `APPROVED` 或 `REJECTED`。
+- 举报或申诉在管理员处理完成并通知用户后结束。
+- 后续商品、订单、账号状态变化，由管理员另行调用对应管理接口完成。
+
+## 二、举报状态流转
+
+### 2.1 状态定义
+
+```text
+PENDING      待处理
+PROCESSING   管理员处理中
+APPROVED     举报成立
+REJECTED     举报驳回
+CLOSED       用户主动关闭或撤回
+```
+
+### 2.2 流转规则
+
+```text
+用户提交举报:
+PENDING
+
+用户主动关闭:
+PENDING -> CLOSED
+
+管理员接手:
+PENDING -> PROCESSING
+
+管理员处理:
+PENDING / PROCESSING -> APPROVED / REJECTED
+```
+
+说明：
+
+- 用户只能在 `PENDING` 状态关闭举报。
+- 一旦举报进入 `PROCESSING`，说明管理员已经接手，用户不能再关闭。
+- 管理员不能把举报处理为 `CLOSED`。
+- 管理员处理为 `APPROVED` 或 `REJECTED` 后，写入处理结果、处理人、处理时间，并通知举报人。
+- 举报处理完成后，不自动修改商品、订单或账号状态。
+
+## 三、申诉状态流转
+
+### 3.1 状态定义
+
+```text
+PENDING      待处理
+PROCESSING   管理员处理中
+APPROVED     申诉通过
+REJECTED     申诉驳回
+CLOSED       用户主动关闭或撤回
+```
+
+### 3.2 流转规则
+
+```text
+用户提交申诉:
+PENDING
+
+用户主动关闭:
+PENDING -> CLOSED
+
+管理员接手:
+PENDING -> PROCESSING
+
+管理员处理:
+PENDING / PROCESSING -> APPROVED / REJECTED
+```
+
+说明：
+
+- 用户只能在 `PENDING` 状态关闭申诉。
+- 一旦申诉进入 `PROCESSING`，用户不能再关闭。
+- 管理员不能把申诉处理为 `CLOSED`。
+- 管理员处理为 `APPROVED` 或 `REJECTED` 后，写入处理结果、处理人、处理时间，并通知申诉人。
+- 申诉通过后，不再自动恢复商品或账号状态。
+
+## 四、处理结束边界
+
+举报或申诉的处理结束点为：
+
+```text
+状态更新为 APPROVED / REJECTED
+写入处理结果
+写入 handler_id
+写入 handle_time
+写入管理员操作日志
+发送站内消息给举报人或申诉人
+```
+
+到这里，举报或申诉流程结束。
+
+后续处置由管理员独立调用管理接口完成，例如：
+
+- 商品下架、恢复、删除。
+- 订单取消、异常关闭、完成。
+- 账号禁用、恢复、注销、删除。
+
+## 五、新增或调整的用户接口
+
+### 5.1 关闭举报
+
+```http
+POST /reports/:id/close
+```
+
+权限：
+
+```text
+登录 + 学生认证
+```
+
+业务规则：
+
+- 只能关闭自己的举报。
+- 只能关闭 `PENDING` 状态的举报。
+- 成功后状态变为 `CLOSED`。
+- `handler_id` 清空。
+
+请求体：
+
+```json
+{
+  "closeReason": "不再需要举报"
+}
+```
+
+### 5.2 关闭申诉
+
+```http
+POST /appeals/:id/close
+```
+
+权限：
+
+```text
+登录
+```
+
+业务规则：
+
+- 只能关闭自己的申诉。
+- 只能关闭 `PENDING` 状态的申诉。
+- 成功后状态变为 `CLOSED`。
+- `handler_id` 清空。
+
+请求体：
+
+```json
+{
+  "closeReason": "不再需要申诉"
+}
+```
+
+## 六、调整后的管理员处理接口
+
+### 6.1 处理举报
+
+```http
+POST /admin/reports/:id/handle
+```
+
+允许状态：
+
+```text
+APPROVED
+REJECTED
+```
+
+不再允许：
+
+```text
+CLOSED
+RESOLVED
+```
+
+请求体：
+
+```json
+{
+  "status": "APPROVED",
+  "handleResult": "举报成立，后续将由管理员下架商品"
+}
+```
+
+### 6.2 处理申诉
+
+```http
+POST /admin/appeals/:id/handle
+```
+
+允许状态：
+
+```text
+APPROVED
+REJECTED
+```
+
+不再允许：
+
+```text
+CLOSED
+```
+
+请求体：
+
+```json
+{
+  "status": "APPROVED",
+  "handleResult": "申诉通过，后续将由管理员恢复商品状态"
+}
+```
+
+## 七、新增管理员后续处理接口
+
+### 7.1 修改账号状态
+
+```http
+PUT /admin/users/:id/status
+```
+
+权限：
+
+```text
+登录 + 管理员
+```
+
+支持状态：
+
+```text
+NORMAL
+DISABLED
+CANCELED
+DELETED
+```
+
+请求体：
+
+```json
+{
+  "accountStatus": "DISABLED",
+  "reason": "举报成立，禁用账号"
+}
+```
+
+说明：
+
+- `DELETED` 为逻辑删除。
+- 设置 `DELETED` 时，会同时设置 `is_deleted = 1`。
+- 管理员不能通过该接口修改自己的账号状态。
+- 管理员账号不能通过该接口被修改状态。
+- 操作写入 `admin_logs`。
+
+### 7.2 修改商品状态
+
+```http
+PUT /admin/products/:id/status
+```
+
+权限：
+
+```text
+登录 + 管理员
+```
+
+支持状态：
+
+```text
+ON_SALE
+OFF_SHELF
+LOCKED
+SOLD
+DELETED
+```
+
+请求体：
+
+```json
+{
+  "status": "OFF_SHELF",
+  "reason": "举报成立，下架商品"
+}
+```
+
+说明：
+
+- `DELETED` 为逻辑删除。
+- 设置 `DELETED` 时，会同时设置 `is_deleted = 1`。
+- 设置 `OFF_SHELF` 时，会记录 `off_shelf_reason`。
+- 操作写入 `admin_logs`。
+
+### 7.3 修改订单状态
+
+```http
+PUT /admin/orders/:id/status
+```
+
+权限：
+
+```text
+登录 + 管理员
+```
+
+支持状态：
+
+```text
+PENDING_CONFIRM
+WAIT_MEET
+COMPLETED
+CANCELED
+EXCEPTION_CLOSED
+```
+
+请求体：
+
+```json
+{
+  "status": "EXCEPTION_CLOSED",
+  "reason": "举报成立，管理员异常关闭订单"
+}
+```
+
+说明：
+
+- 修改为 `WAIT_MEET` 时，写入 `confirm_time`。
+- 修改为 `COMPLETED` 时，写入 `finish_time`，并同步商品为 `SOLD`。
+- 修改为 `CANCELED` 或 `EXCEPTION_CLOSED` 时，写入 `cancel_reason`、`cancel_by`、`close_time`，并同步商品为 `ON_SALE`。
+- 修改为 `PENDING_CONFIRM` 或 `WAIT_MEET` 时，商品同步为 `LOCKED`。
+- 操作写入 `admin_logs`。
+
+## 八、管理员超时订单清理权限调整
+
+原接口：
+
+```http
+POST /admin/orders/cleanup-expired
+```
+
+调整后权限：
+
+```text
+登录 + 管理员
+```
+
+该接口原先只挂登录校验，现在已补充管理员权限校验。
+
+## 九、涉及代码位置
+
+```text
+backend/internal/report/
+backend/internal/appeal/
+backend/internal/user/
+backend/internal/product/
+backend/internal/order/
+backend/internal/stats/
+backend/cmd/server/main.go
+backend/scripts/sql/schema.sql
+```
+
+## 十、数据库说明
+
+### 10.1 逻辑删除
+
+当前相关业务对象均不做物理删除：
+
+- 用户 `account_status = DELETED` 且 `is_deleted = 1`。
+- 商品 `status = DELETED` 且 `is_deleted = 1`。
+- 举报、申诉、订单只通过状态变化保留追溯记录。
+
+### 10.2 举报状态迁移
+
+如果历史数据里存在举报状态 `RESOLVED`，需要迁移为 `APPROVED`：
+
+```sql
+UPDATE reports
+SET status = 'APPROVED'
+WHERE status = 'RESOLVED';
+```
+
+## 十一、验证结果
+
+后端编译测试已通过：
+
+```powershell
+go test ./...
+```

@@ -1,6 +1,8 @@
 package report
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -55,6 +57,12 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 func (h *Handler) GetByID(c *gin.Context) {
+	userID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid report id")
@@ -68,6 +76,10 @@ func (h *Handler) GetByID(c *gin.Context) {
 	}
 	if report == nil {
 		response.Error(c, http.StatusNotFound, response.CodeNotFound, "report not found")
+		return
+	}
+	if report.ReporterID != userID {
+		response.Error(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
 		return
 	}
 	response.Success(c, report)
@@ -117,8 +129,12 @@ func (h *Handler) ListAll(c *gin.Context) {
 }
 
 type handleReportRequest struct {
-	Status       string  `json:"status" binding:"required,oneof=RESOLVED REJECTED CLOSED"`
+	Status       string  `json:"status" binding:"required,oneof=APPROVED REJECTED"`
 	HandleResult *string `json:"handleResult"`
+}
+
+type closeReportRequest struct {
+	CloseReason *string `json:"closeReason"`
 }
 
 func (h *Handler) Handle(c *gin.Context) {
@@ -145,6 +161,68 @@ func (h *Handler) Handle(c *gin.Context) {
 		HandlerID:    adminID,
 		Status:       req.Status,
 		HandleResult: req.HandleResult,
+	})
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		return
+	}
+	response.Success(c, report)
+}
+
+func (h *Handler) Close(c *gin.Context) {
+	userID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	reportID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || reportID == 0 {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid report id")
+		return
+	}
+
+	var req closeReportRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+
+	report, err := h.service.Close(c.Request.Context(), CloseReportInput{
+		ReportID:    reportID,
+		ReporterID:  userID,
+		CloseReason: req.CloseReason,
+	})
+	if err != nil {
+		switch err.Error() {
+		case "permission denied":
+			response.Error(c, http.StatusForbidden, response.CodeForbidden, err.Error())
+		case "report not found":
+			response.Error(c, http.StatusNotFound, response.CodeNotFound, err.Error())
+		default:
+			response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		}
+		return
+	}
+	response.Success(c, report)
+}
+
+func (h *Handler) MarkProcessing(c *gin.Context) {
+	adminID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	reportID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || reportID == 0 {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid report id")
+		return
+	}
+
+	report, err := h.service.MarkProcessing(c.Request.Context(), MarkReportProcessingInput{
+		ReportID:  reportID,
+		HandlerID: adminID,
 	})
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
