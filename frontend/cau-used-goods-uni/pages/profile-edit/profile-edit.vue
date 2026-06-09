@@ -142,12 +142,13 @@ const saveProfile = async () => {
 
 <style scoped>
 .page { min-height: 100vh; padding: 32rpx; background: #f5f6f8; box-sizing: border-box; }
-.avatar-row { display: flex; align-items: center; gap: 24rpx; margin-bottom: 28rpx; }
+.avatar-row { display: flex; align-items: center; justify-content: space-between; gap: 24rpx; margin-bottom: 28rpx; }
 .avatar { width: 120rpx; height: 120rpx; border-radius: 60rpx; background: #dce3ea; display: flex; align-items: center; justify-content: center; color: #8b98a7; }
 .form-card { padding: 32rpx; border-radius: 16rpx; background: #ffffff; }
 .label { margin: 24rpx 0 12rpx; color: #667085; font-size: 28rpx; }
 .input { height: 88rpx; padding: 0 24rpx; border-radius: 12rpx; background: #f0f3f7; font-size: 30rpx; box-sizing: border-box; }
 .primary-button { margin-top: 36rpx; height: 88rpx; line-height: 88rpx; border-radius: 12rpx; background: #17a84b; color: #ffffff; font-size: 30rpx; }
-.ghost-button, .wechat-button { background: #ffffff; color: #17a84b; }
+.ghost-button { flex-shrink: 0; margin: 0; background: #ffffff; color: #17a84b; }
+.wechat-button { background: #ffffff; color: #17a84b; }
 .wechat-button { margin-top: 24rpx; }
 </style>

@@ -80,7 +80,6 @@ func (h *Handler) AdminCreateCategory(c *gin.Context) {
 	}
 
 	id, err := h.service.CreateCategory(c.Request.Context(), CategoryCreateInput{
-		AdminID:   adminID,
 		Name:      req.Name,
 		ParentID:  req.ParentID,
 		SortOrder: req.SortOrder,
@@ -90,6 +89,8 @@ func (h *Handler) AdminCreateCategory(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
+	description := "新增标签：" + req.Name
+	_ = h.service.repo.CreateCategoryAdminLog(c.Request.Context(), adminID, "CATEGORY_CREATE", id, description, c.ClientIP())
 	response.Success(c, gin.H{"id": id})
 }
 
@@ -113,7 +114,6 @@ func (h *Handler) AdminUpdateCategory(c *gin.Context) {
 	}
 
 	if err := h.service.UpdateCategory(c.Request.Context(), CategoryUpdateInput{
-		AdminID:   adminID,
 		ID:        id,
 		Name:      req.Name,
 		ParentID:  req.ParentID,
@@ -123,6 +123,8 @@ func (h *Handler) AdminUpdateCategory(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
+	description := "编辑标签：" + req.Name
+	_ = h.service.repo.CreateCategoryAdminLog(c.Request.Context(), adminID, "CATEGORY_UPDATE", id, description, c.ClientIP())
 	response.Success(c, gin.H{"id": id})
 }
 
@@ -145,10 +147,17 @@ func (h *Handler) AdminUpdateCategoryStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.UpdateCategoryStatus(c.Request.Context(), adminID, id, req.Status); err != nil {
+	if err := h.service.UpdateCategoryStatus(c.Request.Context(), id, req.Status); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
+	operationType := "CATEGORY_DISABLE"
+	description := "停用标签"
+	if req.Status == "ENABLED" {
+		operationType = "CATEGORY_ENABLE"
+		description = "启用标签"
+	}
+	_ = h.service.repo.CreateCategoryAdminLog(c.Request.Context(), adminID, operationType, id, description, c.ClientIP())
 	response.Success(c, gin.H{
 		"id":     id,
 		"status": req.Status,
@@ -168,10 +177,11 @@ func (h *Handler) AdminDeleteCategory(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.UpdateCategoryStatus(c.Request.Context(), adminID, id, "DISABLED"); err != nil {
+	if err := h.service.UpdateCategoryStatus(c.Request.Context(), id, "DISABLED"); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
+	_ = h.service.repo.CreateCategoryAdminLog(c.Request.Context(), adminID, "CATEGORY_DISABLE", id, "停用标签", c.ClientIP())
 	response.Success(c, gin.H{
 		"id":     id,
 		"status": "DISABLED",
@@ -386,6 +396,11 @@ type updateProductStatusRequest struct {
 	Reason string `json:"reason"`
 }
 
+type adminUpdateProductStatusRequest struct {
+	Status string `json:"status" binding:"required"`
+	Reason string `json:"reason"`
+}
+
 func (h *Handler) UpdateProductStatus(c *gin.Context) {
 	productID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || productID == 0 {
@@ -410,9 +425,45 @@ func (h *Handler) UpdateProductStatus(c *gin.Context) {
 		return
 	}
 
-	role, _ := middleware.CurrentRole(c)
-	if err := h.service.UpdateProductStatus(c.Request.Context(), productID, userID, role, req.Status, req.Reason); err != nil {
+	if err := h.service.UpdateProductStatus(c.Request.Context(), productID, userID, req.Status, req.Reason); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "product not found or status cannot be changed")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"id":     productID,
+		"status": req.Status,
+	})
+}
+
+func (h *Handler) AdminUpdateProductStatus(c *gin.Context) {
+	adminID, ok := currentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	productID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || productID == 0 {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid product id")
+		return
+	}
+
+	var req adminUpdateProductStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+
+	ipAddress := c.ClientIP()
+	if err := h.service.AdminUpdateProductStatus(c.Request.Context(), AdminUpdateProductStatusInput{
+		AdminID:   adminID,
+		ProductID: productID,
+		Status:    req.Status,
+		Reason:    req.Reason,
+		IPAddress: &ipAddress,
+	}); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
 

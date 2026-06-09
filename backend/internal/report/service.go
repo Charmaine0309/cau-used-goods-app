@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	"cau-used-goods-app/backend/internal/admin"
 	"cau-used-goods-app/backend/internal/message"
 	"cau-used-goods-app/backend/internal/sensitive"
 )
@@ -138,7 +137,40 @@ type HandleReportInput struct {
 	HandleResult *string
 }
 
+type MarkReportProcessingInput struct {
+	ReportID  uint64
+	HandlerID uint64
+}
+
+type CloseReportInput struct {
+	ReportID    uint64
+	ReporterID  uint64
+	CloseReason *string
+}
+
+func (s *Service) MarkProcessing(ctx context.Context, input MarkReportProcessingInput) (*ReportDetail, error) {
+	if input.ReportID == 0 {
+		return nil, fmt.Errorf("report id is required")
+	}
+	if input.HandlerID == 0 {
+		return nil, fmt.Errorf("handler id is required")
+	}
+
+	if err := s.repo.MarkProcessing(ctx, input.ReportID, input.HandlerID); err != nil {
+		return nil, err
+	}
+
+	result := "举报标记为处理中"
+	_ = s.logAdminAction(ctx, input.HandlerID, input.ReportID, "PROCESSING", &result)
+
+	return s.GetByID(ctx, input.ReportID)
+}
+
 func (s *Service) Handle(ctx context.Context, input HandleReportInput) (*ReportDetail, error) {
+	if input.Status != "APPROVED" && input.Status != "REJECTED" {
+		return nil, fmt.Errorf("status must be APPROVED or REJECTED")
+	}
+
 	report, err := s.repo.GetByID(ctx, input.ReportID)
 	if err != nil {
 		return nil, err
@@ -179,15 +211,41 @@ func (s *Service) Handle(ctx context.Context, input HandleReportInput) (*ReportD
 	return s.GetByID(ctx, input.ReportID)
 }
 
+func (s *Service) Close(ctx context.Context, input CloseReportInput) (*ReportDetail, error) {
+	if input.ReportID == 0 {
+		return nil, fmt.Errorf("report id is required")
+	}
+	if input.ReporterID == 0 {
+		return nil, fmt.Errorf("reporter id is required")
+	}
+
+	item, err := s.repo.GetByID(ctx, input.ReportID)
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, fmt.Errorf("report not found")
+	}
+	if item.ReporterID != input.ReporterID {
+		return nil, fmt.Errorf("permission denied")
+	}
+	if item.Status != "PENDING" {
+		return nil, fmt.Errorf("report cannot be closed")
+	}
+
+	if err := s.repo.Close(ctx, input.ReportID, input.ReporterID, input.CloseReason); err != nil {
+		return nil, err
+	}
+	return s.GetByID(ctx, input.ReportID)
+}
+
 func (s *Service) logAdminAction(ctx context.Context, adminID, reportID uint64, status string, handleResult *string) error {
 	var actionType string
 	switch status {
-	case "RESOLVED":
-		actionType = admin.OperationReportResolve
+	case "APPROVED":
+		actionType = "REPORT_APPROVE"
 	case "REJECTED":
-		actionType = admin.OperationReportReject
-	case "CLOSED":
-		actionType = admin.OperationReportClose
+		actionType = "REPORT_REJECT"
 	default:
 		actionType = "REPORT_HANDLE"
 	}
@@ -198,8 +256,8 @@ func (s *Service) logAdminAction(ctx context.Context, adminID, reportID uint64, 
 	}
 
 	query := `
-		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, create_time)
-		VALUES (?, ?, 'REPORT', ?, ?, NOW())
+		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description)
+		VALUES (?, ?, 'REPORT', ?, ?)
 	`
 	_, err := s.db.ExecContext(ctx, query, adminID, actionType, reportID, result)
 	return err

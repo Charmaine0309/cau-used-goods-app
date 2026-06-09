@@ -147,6 +147,17 @@ func (r *Repository) UpdateCategoryStatus(ctx context.Context, id uint64, status
 	return checkAffected(result)
 }
 
+func (r *Repository) CreateCategoryAdminLog(ctx context.Context, adminID uint64, operationType string, categoryID uint64, description string, ipAddress string) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, ip_address, create_time)
+		VALUES (?, ?, 'CATEGORY', ?, ?, NULLIF(?, ''), NOW())
+	`, adminID, operationType, categoryID, description, ipAddress)
+	if err != nil {
+		return fmt.Errorf("create category admin log: %w", err)
+	}
+	return nil
+}
+
 type CreateProductInput struct {
 	SellerID       uint64
 	CategoryID     uint64
@@ -506,12 +517,11 @@ func (r *Repository) UpdateProductStatus(ctx context.Context, productID uint64, 
 	return checkAffected(result)
 }
 
-func (r *Repository) UpdateProductStatusByAdmin(ctx context.Context, productID uint64, adminID uint64, status string, reason string) error {
+func (r *Repository) AdminUpdateProductStatus(ctx context.Context, input AdminUpdateProductStatusInput) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin update product status tx: %w", err)
 	}
-
 	committed := false
 	defer func() {
 		if !committed {
@@ -519,46 +529,42 @@ func (r *Repository) UpdateProductStatusByAdmin(ctx context.Context, productID u
 		}
 	}()
 
+	isDeleted := 0
+	if input.Status == "DELETED" {
+		isDeleted = 1
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE products
 		SET status = ?,
-		    off_shelf_reason = ?,
+		    off_shelf_reason = CASE WHEN ? = 'OFF_SHELF' THEN ? ELSE NULL END,
+		    is_deleted = ?,
 		    update_time = CURRENT_TIMESTAMP
 		WHERE id = ?
-		  AND is_deleted = 0
-		  AND (
-		      (? = 'OFF_SHELF' AND status = 'ON_SALE')
-		      OR
-		      (? = 'ON_SALE' AND status = 'OFF_SHELF')
-		  )
-	`,
-		status, reason, productID, status, status,
-	)
+	`, input.Status, input.Status, input.Reason, isDeleted, input.ProductID)
 	if err != nil {
-		return err
+		return fmt.Errorf("update product status: %w", err)
 	}
-	if err := checkAffected(result); err != nil {
-		return err
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check update product status result: %w", err)
 	}
-
-	operationType := "PRODUCT_ON_SALE"
-	if status == "OFF_SHELF" {
-		operationType = "PRODUCT_OFF_SHELF"
-	}
-	description := reason
-	if description == "" {
-		description = "admin update product status"
+	if affected == 0 {
+		return fmt.Errorf("product not found")
 	}
 
+	description := fmt.Sprintf("update product status to %s", input.Status)
+	if input.Reason != "" {
+		description = fmt.Sprintf("%s: %s", description, input.Reason)
+	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, create_time)
-		VALUES (?, ?, 'PRODUCT', ?, ?, NOW())
-	`, adminID, operationType, productID, description); err != nil {
-		return err
+		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, ip_address, create_time)
+		VALUES (?, 'UPDATE_PRODUCT_STATUS', 'PRODUCT', ?, ?, ?, NOW())
+	`, input.AdminID, input.ProductID, description, input.IPAddress); err != nil {
+		return fmt.Errorf("create product status admin log: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return err
+		return fmt.Errorf("commit update product status tx: %w", err)
 	}
 	committed = true
 	return nil

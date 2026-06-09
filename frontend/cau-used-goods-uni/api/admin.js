@@ -100,13 +100,20 @@ export const getAdminReports = () => {
   })
 }
 
+export const markAdminReportProcessing = (reportId) => {
+  return request({
+    url: `/admin/reports/${reportId}/processing`,
+    method: 'POST'
+  })
+}
+
 export const handleAdminReport = (reportId, status, handleResult) => {
   return request({
     url: `/admin/reports/${reportId}/handle`,
     method: 'POST',
     data: {
       status,
-      handleResult: handleResult || (status === 'PROCESSING' ? '举报处理中' : status === 'RESOLVED' ? '举报已处理' : '举报已驳回')
+      handleResult: handleResult || (status === 'PROCESSING' ? '举报处理中' : status === 'APPROVED' ? '举报已处理' : '举报已驳回')
     }
   })
 }
@@ -114,6 +121,13 @@ export const handleAdminReport = (reportId, status, handleResult) => {
 export const getAdminAppeals = () => {
   return request({
     url: '/admin/appeals?page=1&pageSize=20'
+  })
+}
+
+export const markAdminAppealProcessing = (appealId) => {
+  return request({
+    url: `/admin/appeals/${appealId}/processing`,
+    method: 'POST'
   })
 }
 
@@ -172,5 +186,18 @@ export const updateAnnouncementStatus = (id, status) => {
     url: `/admin/announcements/${id}/status`,
     method: 'PUT',
     data: { status }
+  })
+}
+
+export const getAdminOrders = (status = 'ALL') => {
+  const query = status && status !== 'ALL' ? `?status=${status}&page=1&pageSize=50` : '?page=1&pageSize=50'
+  return request({ url: `/admin/orders${query}` })
+}
+
+export const updateAdminOrderStatus = (orderId, status, reason = '') => {
+  return request({
+    url: `/admin/orders/${orderId}/status`,
+    method: 'PUT',
+    data: { status, reason }
   })
 }

@@ -3,14 +3,13 @@ package admin
 import "time"
 
 const (
-	TargetTypeUser     = "USER"
-	TargetTypeProduct  = "PRODUCT"
-	TargetTypeOrder    = "ORDER"
-	TargetTypeReport   = "REPORT"
-	TargetTypeNotice   = "NOTICE"
-	TargetTypeWord     = "WORD"
-	TargetTypeAppeal   = "APPEAL"
-	TargetTypeCategory = "CATEGORY"
+	TargetTypeUser    = "USER"
+	TargetTypeProduct = "PRODUCT"
+	TargetTypeOrder   = "ORDER"
+	TargetTypeReport  = "REPORT"
+	TargetTypeNotice  = "NOTICE"
+	TargetTypeWord    = "WORD"
+	TargetTypeAppeal  = "APPEAL"
 )
 
 const (
@@ -20,26 +19,13 @@ const (
 )
 
 const (
-	OperationUserDisable         = "USER_DISABLE"
-	OperationUserEnable          = "USER_ENABLE"
-	OperationProductOffShelf     = "PRODUCT_OFF_SHELF"
-	OperationReportResolve       = "REPORT_RESOLVE"
-	OperationReportReject        = "REPORT_REJECT"
-	OperationReportClose         = "REPORT_CLOSE"
-	OperationNoticePublish       = "NOTICE_PUBLISH"
-	OperationNoticeOffline       = "NOTICE_OFFLINE"
-	OperationWordCreate          = "WORD_CREATE"
-	OperationWordDisable         = "WORD_DISABLE"
-	OperationOrderExceptionClose = "ORDER_EXCEPTION_CLOSE"
-	OperationCategoryCreate      = "CATEGORY_CREATE"
-	OperationCategoryUpdate      = "CATEGORY_UPDATE"
-	OperationCategoryEnable      = "CATEGORY_ENABLE"
-	OperationCategoryDisable     = "CATEGORY_DISABLE"
-
 	OperationCreateNotice = "CREATE_NOTICE"
 	OperationUpdateNotice = "UPDATE_NOTICE"
 	OperationStatusNotice = "STATUS_NOTICE"
+	OperationDeleteNotice = "DELETE_NOTICE"
+	OperationCreateWord   = "CREATE_WORD"
 	OperationUpdateWord   = "UPDATE_WORD"
+	OperationDeleteWord   = "DELETE_WORD"
 	OperationHandleAppeal = "HANDLE_APPEAL"
 )
 

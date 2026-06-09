@@ -40,11 +40,6 @@ type reviewStudentVerificationRequest struct {
 	Description string `json:"description"`
 }
 
-type updateAccountStatusRequest struct {
-	AccountStatus string `json:"accountStatus" binding:"required"`
-	Reason        string `json:"reason"`
-}
-
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
@@ -300,49 +295,6 @@ func (h *Handler) ListStudentVerifications(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"items": items})
-}
-
-func (h *Handler) ListUsers(c *gin.Context) {
-	items, err := h.service.ListUsers(c.Request.Context())
-	if err != nil {
-		writeUserError(c, err)
-		return
-	}
-	response.Success(c, gin.H{
-		"items": items,
-		"total": len(items),
-	})
-}
-
-func (h *Handler) UpdateAccountStatus(c *gin.Context) {
-	adminID, ok := middleware.CurrentUserID(c)
-	if !ok {
-		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
-		return
-	}
-
-	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err != nil || userID == 0 {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid user id")
-		return
-	}
-
-	var req updateAccountStatusRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
-		return
-	}
-
-	user, err := h.service.UpdateAccountStatus(c.Request.Context(), adminID, UpdateAccountStatusInput{
-		UserID:        userID,
-		AccountStatus: req.AccountStatus,
-		Reason:        req.Reason,
-	})
-	if err != nil {
-		writeUserError(c, err)
-		return
-	}
-	response.Success(c, user)
 }
 
 func (h *Handler) ReviewStudentVerification(c *gin.Context) {

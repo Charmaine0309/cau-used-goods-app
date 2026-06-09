@@ -31,18 +31,6 @@ type StudentVerification struct {
 	AccountStatus string  `json:"accountStatus"`
 }
 
-type AdminUserItem struct {
-	ID            uint64  `json:"id"`
-	Nickname      *string `json:"nickname"`
-	Phone         *string `json:"phone"`
-	Role          string  `json:"role"`
-	AuthStatus    string  `json:"authStatus"`
-	AccountStatus string  `json:"accountStatus"`
-	StudentID     *string `json:"studentId"`
-	RealName      *string `json:"realName"`
-	College       *string `json:"college"`
-}
-
 type Repository struct {
 	db *sql.DB
 }
@@ -188,84 +176,6 @@ ORDER BY update_time DESC`
 		return nil, fmt.Errorf("iterate student verifications: %w", err)
 	}
 	return items, nil
-}
-
-func (r *Repository) ListUsers(ctx context.Context) ([]AdminUserItem, error) {
-	const query = `
-SELECT id, nickname, phone, role, auth_status, account_status, student_id, real_name, college
-FROM users
-WHERE is_deleted = 0
-ORDER BY update_time DESC, id DESC`
-
-	rows, err := r.db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("list users: %w", err)
-	}
-	defer rows.Close()
-
-	items := make([]AdminUserItem, 0)
-	for rows.Next() {
-		var item AdminUserItem
-		if err := rows.Scan(
-			&item.ID,
-			&item.Nickname,
-			&item.Phone,
-			&item.Role,
-			&item.AuthStatus,
-			&item.AccountStatus,
-			&item.StudentID,
-			&item.RealName,
-			&item.College,
-		); err != nil {
-			return nil, fmt.Errorf("scan user: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate users: %w", err)
-	}
-	return items, nil
-}
-
-func (r *Repository) UpdateAccountStatus(ctx context.Context, adminID, userID uint64, accountStatus, operationType, reason string) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin update account status tx: %w", err)
-	}
-
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-
-	result, err := tx.ExecContext(ctx, `
-UPDATE users
-SET account_status = ?, update_time = NOW()
-WHERE id = ? AND is_deleted = 0`, accountStatus, userID)
-	if err != nil {
-		return fmt.Errorf("update account status: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("get update account status affected rows: %w", err)
-	}
-	if affected == 0 {
-		return fmt.Errorf("用户不存在")
-	}
-
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, create_time)
-VALUES (?, ?, 'USER', ?, ?, NOW())`, adminID, operationType, userID, reason); err != nil {
-		return fmt.Errorf("create account status admin log: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit update account status tx: %w", err)
-	}
-	committed = true
-	return nil
 }
 
 func (r *Repository) ReviewStudentVerification(ctx context.Context, adminID uint64, userID uint64, authStatus string, description string) error {

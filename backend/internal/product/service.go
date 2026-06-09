@@ -5,14 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"cau-used-goods-app/backend/internal/admin"
 	"cau-used-goods-app/backend/internal/sensitive"
 )
 
 type Service struct {
 	repo             *Repository
 	sensitiveService *sensitive.Service
-	adminLogger      *admin.Service
 }
 
 func NewService(repo *Repository, sensitiveService *sensitive.Service) *Service {
@@ -20,10 +18,6 @@ func NewService(repo *Repository, sensitiveService *sensitive.Service) *Service 
 		repo:             repo,
 		sensitiveService: sensitiveService,
 	}
-}
-
-func (s *Service) SetAdminLogger(adminLogger *admin.Service) {
-	s.adminLogger = adminLogger
 }
 
 func (s *Service) ListCategories(ctx context.Context) ([]Category, error) {
@@ -39,7 +33,6 @@ func (s *Service) ListAllCategories(ctx context.Context, status string) ([]Categ
 }
 
 type CategoryCreateInput struct {
-	AdminID   uint64
 	Name      string
 	ParentID  uint64
 	SortOrder int
@@ -55,24 +48,15 @@ func (s *Service) CreateCategory(ctx context.Context, input CategoryCreateInput)
 	if err := validateCategoryInput(input.Name, input.Status); err != nil {
 		return 0, err
 	}
-	id, err := s.repo.CreateCategory(ctx, CreateCategoryInput{
+	return s.repo.CreateCategory(ctx, CreateCategoryInput{
 		Name:      input.Name,
 		ParentID:  input.ParentID,
 		SortOrder: input.SortOrder,
 		Status:    input.Status,
 	})
-	if err != nil {
-		return 0, err
-	}
-	description := fmt.Sprintf("新增标签：%s", input.Name)
-	if err := s.logAdminAction(ctx, input.AdminID, admin.OperationCategoryCreate, id, description); err != nil {
-		return 0, err
-	}
-	return id, nil
 }
 
 type CategoryUpdateInput struct {
-	AdminID   uint64
 	ID        uint64
 	Name      string
 	ParentID  uint64
@@ -95,20 +79,16 @@ func (s *Service) UpdateCategory(ctx context.Context, input CategoryUpdateInput)
 	if input.ParentID == input.ID {
 		return fmt.Errorf("category parent cannot be itself")
 	}
-	if err := s.repo.UpdateCategory(ctx, UpdateCategoryInput{
+	return s.repo.UpdateCategory(ctx, UpdateCategoryInput{
 		ID:        input.ID,
 		Name:      input.Name,
 		ParentID:  input.ParentID,
 		SortOrder: input.SortOrder,
 		Status:    input.Status,
-	}); err != nil {
-		return err
-	}
-	description := fmt.Sprintf("编辑标签：%s", input.Name)
-	return s.logAdminAction(ctx, input.AdminID, admin.OperationCategoryUpdate, input.ID, description)
+	})
 }
 
-func (s *Service) UpdateCategoryStatus(ctx context.Context, adminID uint64, id uint64, status string) error {
+func (s *Service) UpdateCategoryStatus(ctx context.Context, id uint64, status string) error {
 	status = strings.TrimSpace(status)
 	if id == 0 {
 		return fmt.Errorf("category id is required")
@@ -116,30 +96,7 @@ func (s *Service) UpdateCategoryStatus(ctx context.Context, adminID uint64, id u
 	if !isValidCategoryStatus(status) {
 		return fmt.Errorf("invalid category status")
 	}
-	if err := s.repo.UpdateCategoryStatus(ctx, id, status); err != nil {
-		return err
-	}
-	operationType := admin.OperationCategoryEnable
-	description := "启用标签"
-	if status == "DISABLED" {
-		operationType = admin.OperationCategoryDisable
-		description = "停用标签"
-	}
-	return s.logAdminAction(ctx, adminID, operationType, id, description)
-}
-
-func (s *Service) logAdminAction(ctx context.Context, adminID uint64, operationType string, targetID uint64, description string) error {
-	if s.adminLogger == nil || adminID == 0 {
-		return nil
-	}
-	_, err := s.adminLogger.LogAction(ctx, admin.LogActionInput{
-		AdminID:       adminID,
-		OperationType: operationType,
-		TargetType:    admin.TargetTypeCategory,
-		TargetID:      targetID,
-		Description:   &description,
-	})
-	return err
+	return s.repo.UpdateCategoryStatus(ctx, id, status)
 }
 
 func validateCategoryInput(name string, status string) error {
@@ -255,11 +212,47 @@ func (s *Service) UpdateProduct(ctx context.Context, input ProductUpdateInput) e
 	})
 }
 
-func (s *Service) UpdateProductStatus(ctx context.Context, productID uint64, sellerID uint64, role string, status string, reason string) error {
-	if role == "ADMIN" {
-		return s.repo.UpdateProductStatusByAdmin(ctx, productID, sellerID, status, reason)
-	}
+func (s *Service) UpdateProductStatus(ctx context.Context, productID uint64, sellerID uint64, status string, reason string) error {
 	return s.repo.UpdateProductStatus(ctx, productID, sellerID, status, reason)
+}
+
+type AdminUpdateProductStatusInput struct {
+	AdminID   uint64
+	ProductID uint64
+	Status    string
+	Reason    string
+	IPAddress *string
+}
+
+func (s *Service) AdminUpdateProductStatus(ctx context.Context, input AdminUpdateProductStatusInput) error {
+	if input.AdminID == 0 {
+		return fmt.Errorf("adminId is required")
+	}
+	if input.ProductID == 0 {
+		return fmt.Errorf("productId is required")
+	}
+	input.Status = strings.ToUpper(strings.TrimSpace(input.Status))
+	input.Reason = strings.TrimSpace(input.Reason)
+	if input.IPAddress != nil {
+		trimmed := strings.TrimSpace(*input.IPAddress)
+		input.IPAddress = &trimmed
+	}
+	if !isValidAdminProductStatus(input.Status) {
+		return fmt.Errorf("status must be ON_SALE, OFF_SHELF, LOCKED, SOLD or DELETED")
+	}
+	if len([]rune(input.Reason)) > 500 {
+		return fmt.Errorf("reason cannot exceed 500 characters")
+	}
+	return s.repo.AdminUpdateProductStatus(ctx, input)
+}
+
+func isValidAdminProductStatus(status string) bool {
+	switch status {
+	case "ON_SALE", "OFF_SHELF", "LOCKED", "SOLD", "DELETED":
+		return true
+	default:
+		return false
+	}
 }
 
 type ProductImagesInput struct {

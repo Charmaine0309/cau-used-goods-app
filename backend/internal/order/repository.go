@@ -148,6 +148,51 @@ func (r *Repository) MarkProductSold(ctx context.Context, tx *sql.Tx, productID 
 	return nil
 }
 
+func (r *Repository) UpdateProductStatusForAdmin(ctx context.Context, tx *sql.Tx, productID uint64, status string) error {
+	query := `
+		UPDATE products
+		SET status = ?,
+		    is_deleted = CASE WHEN ? = 'DELETED' THEN 1 ELSE 0 END,
+		    update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`
+	var result sql.Result
+	var err error
+	if tx != nil {
+		result, err = tx.ExecContext(ctx, query, status, status, productID)
+	} else {
+		result, err = r.db.ExecContext(ctx, query, status, status, productID)
+	}
+	if err != nil {
+		return fmt.Errorf("update product status for admin: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("product not found")
+	}
+	return nil
+}
+
+func (r *Repository) CreateAdminLog(ctx context.Context, tx *sql.Tx, adminID uint64, operationType string, targetType string, targetID uint64, description string, ipAddress *string) error {
+	query := `
+		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, ip_address, create_time)
+		VALUES (?, ?, ?, ?, ?, ?, NOW())
+	`
+	var err error
+	if tx != nil {
+		_, err = tx.ExecContext(ctx, query, adminID, operationType, targetType, targetID, description, ipAddress)
+	} else {
+		_, err = r.db.ExecContext(ctx, query, adminID, operationType, targetType, targetID, description, ipAddress)
+	}
+	if err != nil {
+		return fmt.Errorf("create admin log: %w", err)
+	}
+	return nil
+}
+
 func (r *Repository) ListByBuyer(ctx context.Context, buyerID uint64, status string, page, pageSize int) ([]OrderDetail, int, error) {
 	where := "o.buyer_id = ?"
 	args := []interface{}{buyerID}
@@ -262,6 +307,64 @@ func (r *Repository) ListBySeller(ctx context.Context, sellerID uint64, status s
 		orders = append(orders, od)
 	}
 	return orders, total, nil
+}
+
+func (r *Repository) ListAll(ctx context.Context, status string, page, pageSize int) ([]OrderDetail, int, error) {
+	where := "1 = 1"
+	args := []interface{}{}
+	if status != "" {
+		where += " AND o.status = ?"
+		args = append(args, status)
+	}
+
+	var total int
+	countQuery := "SELECT COUNT(*) FROM orders o WHERE " + where
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count orders: %w", err)
+	}
+
+	query := `
+		SELECT o.id, o.order_no, o.product_id, o.buyer_id, o.seller_id, o.product_title_snapshot, o.product_price_snapshot, o.status, o.remark, o.meet_time, o.meet_location, o.cancel_reason, o.cancel_by, o.expire_time, o.confirm_time, o.finish_time, o.close_time, o.create_time, o.update_time,
+			ub.nickname, us.nickname, pi.image_url
+		FROM orders o
+		LEFT JOIN users ub ON ub.id = o.buyer_id
+		LEFT JOIN users us ON us.id = o.seller_id
+		LEFT JOIN product_images pi ON pi.product_id = o.product_id AND pi.sort_order = 0
+		WHERE ` + where + `
+		ORDER BY o.create_time DESC
+		LIMIT ? OFFSET ?
+	`
+	args = append(args, pageSize, (page-1)*pageSize)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list orders: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []OrderDetail
+	for rows.Next() {
+		var od OrderDetail
+		var buyerNick, sellerNick, productImg sql.NullString
+		err := rows.Scan(
+			&od.ID, &od.OrderNo, &od.ProductID, &od.BuyerID, &od.SellerID, &od.ProductTitleSnapshot, &od.ProductPriceSnapshot, &od.Status, &od.Remark, &od.MeetTime, &od.MeetLocation, &od.CancelReason, &od.CancelBy, &od.ExpireTime, &od.ConfirmTime, &od.FinishTime, &od.CloseTime, &od.CreateTime, &od.UpdateTime,
+			&buyerNick, &sellerNick, &productImg,
+		)
+		if err != nil {
+			return nil, 0, fmt.Errorf("scan order: %w", err)
+		}
+		if buyerNick.Valid {
+			od.BuyerNickname = &buyerNick.String
+		}
+		if sellerNick.Valid {
+			od.SellerNickname = &sellerNick.String
+		}
+		if productImg.Valid {
+			od.ProductImage = &productImg.String
+		}
+		orders = append(orders, od)
+	}
+	return orders, total, rows.Err()
 }
 
 func (r *Repository) HasActiveOrderByBuyer(ctx context.Context, buyerID, productID uint64) (bool, error) {

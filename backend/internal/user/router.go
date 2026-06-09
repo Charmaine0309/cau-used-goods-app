@@ -17,8 +17,6 @@ func RegisterAdminRoutes(r *gin.Engine, handler *Handler, authMiddleware gin.Han
 	group := r.Group("/admin/users")
 	group.Use(authMiddleware, adminMiddleware)
 
-	group.GET("", handler.ListUsers)
 	group.GET("/student-verifications", handler.ListStudentVerifications)
-	group.PUT("/:id/status", handler.UpdateAccountStatus)
 	group.PUT("/:id/student-verify", handler.ReviewStudentVerification)
 }

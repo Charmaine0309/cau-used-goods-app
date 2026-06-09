@@ -305,58 +305,48 @@ func (r *Repository) Handle(ctx context.Context, input HandleAppealInput) (*Appe
 		return nil, fmt.Errorf("handle appeal: %w", err)
 	}
 
-	if input.Status == StatusApproved {
-		appeal, err := r.getByIDTx(ctx, tx, input.AppealID)
-		if err != nil {
-			return nil, err
-		}
-		if err := r.applyApprovedAction(ctx, tx, appeal); err != nil {
-			return nil, err
-		}
-	}
-
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit handle appeal tx: %w", err)
 	}
 	return r.GetByID(ctx, input.AppealID)
 }
 
-func (r *Repository) getByIDTx(ctx context.Context, tx *sql.Tx, id uint64) (*Appeal, error) {
-	query := `
-		SELECT id, appellant_id, target_type, target_id, reason, status,
-			handle_result, handler_id, DATE_FORMAT(handle_time, '%Y-%m-%d %H:%i:%s'),
-			DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s'),
-			DATE_FORMAT(update_time, '%Y-%m-%d %H:%i:%s')
-		FROM appeals
-		WHERE id = ?
-	`
-	return scanAppeal(tx.QueryRowContext(ctx, query, id))
+func (r *Repository) Close(ctx context.Context, input CloseAppealInput) (*Appeal, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE appeals
+		SET status = ?, handle_result = ?, handler_id = NULL, handle_time = NOW(), update_time = CURRENT_TIMESTAMP
+		WHERE id = ? AND appellant_id = ? AND status = ?
+	`, StatusClosed, input.CloseReason, input.AppealID, input.AppellantID, StatusPending)
+	if err != nil {
+		return nil, fmt.Errorf("close appeal: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("check close appeal result: %w", err)
+	}
+	if affected == 0 {
+		return nil, fmt.Errorf("appeal cannot be closed")
+	}
+	return r.GetByID(ctx, input.AppealID)
 }
 
-func (r *Repository) applyApprovedAction(ctx context.Context, tx *sql.Tx, item *Appeal) error {
-	switch item.TargetType {
-	case TargetTypeProduct:
-		_, err := tx.ExecContext(ctx, `
-			UPDATE products
-			SET status = 'ON_SALE', off_shelf_reason = NULL, update_time = CURRENT_TIMESTAMP
-			WHERE id = ? AND is_deleted = 0 AND status = 'OFF_SHELF'
-		`, item.TargetID)
-		if err != nil {
-			return fmt.Errorf("restore appealed product: %w", err)
-		}
-	case TargetTypeUser:
-		_, err := tx.ExecContext(ctx, `
-			UPDATE users
-			SET account_status = 'NORMAL', update_time = CURRENT_TIMESTAMP
-			WHERE id = ? AND is_deleted = 0
-		`, item.TargetID)
-		if err != nil {
-			return fmt.Errorf("restore appealed user: %w", err)
-		}
-	case TargetTypeOrder, TargetTypeReport:
-		return nil
+func (r *Repository) MarkProcessing(ctx context.Context, appealID uint64, adminID uint64) (*Appeal, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE appeals
+		SET status = ?, handler_id = ?, update_time = CURRENT_TIMESTAMP
+		WHERE id = ? AND status = ?
+	`, StatusProcessing, adminID, appealID, StatusPending)
+	if err != nil {
+		return nil, fmt.Errorf("mark appeal processing: %w", err)
 	}
-	return nil
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("check mark appeal processing result: %w", err)
+	}
+	if affected == 0 {
+		return nil, fmt.Errorf("appeal cannot be marked processing")
+	}
+	return r.GetByID(ctx, appealID)
 }
 
 func scanAppeal(scanner interface {

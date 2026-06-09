@@ -158,11 +158,11 @@
 
       <view class="todo-panel">
         <view class="todo-card urgent" @click="goPage('/pages/admin-students/admin-students')">
-          <view class="todo-number">{{ userOverview.pendingUsers || 0 }}</view>
+          <view :class="['todo-number', userOverview.pendingUsers ? 'danger' : '']">{{ userOverview.pendingUsers || 0 }}</view>
           <view class="todo-label">待认证审核</view>
         </view>
         <view class="todo-card" @click="goPage('/pages/admin-reports/admin-reports')">
-          <view class="todo-number">{{ riskTodoCount }}</view>
+          <view :class="['todo-number', riskTodoCount ? 'danger' : '']">{{ riskTodoCount }}</view>
           <view class="todo-label">待处理申诉和举报</view>
         </view>
       </view>
@@ -189,23 +189,16 @@
           <view class="manage-title">公告管理</view>
           <view class="manage-desc">发布 / 下线</view>
         </view>
+        <view class="manage-card" @click="goPage('/pages/admin-orders/admin-orders')">
+          <view class="manage-title">订单管理</view>
+          <view class="manage-desc">异常关闭</view>
+        </view>
         <view class="manage-card" @click="goPage('/pages/admin-stats/admin-stats')">
           <view class="manage-title">申诉统计</view>
           <view class="manage-desc">申诉数据</view>
         </view>
       </view>
 
-      <view class="section-title">说明</view>
-      <view class="hint-panel">
-        <view class="hint-row">
-          <text class="hint-dot"></text>
-          <text>待处理事项优先处理，处理后数量会自动更新。</text>
-        </view>
-        <view class="hint-row">
-          <text class="hint-dot"></text>
-          <text>商品、用户、公告和敏感词属于日常管理入口。</text>
-        </view>
-      </view>
     </view>
 
     <view v-else class="content">
@@ -735,6 +728,10 @@ const categoryOnSaleBarStyle = (item) => {
   line-height: 56rpx;
   font-weight: 700;
   color: #17a84b;
+}
+
+.todo-number.danger {
+  color: #ef4444;
 }
 
 .todo-label {

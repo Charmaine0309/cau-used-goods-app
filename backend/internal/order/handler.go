@@ -29,6 +29,11 @@ type cancelOrderRequest struct {
 	Reason string `json:"reason" binding:"required"`
 }
 
+type adminUpdateOrderStatusRequest struct {
+	Status string `json:"status" binding:"required"`
+	Reason string `json:"reason"`
+}
+
 func (h *Handler) Create(c *gin.Context) {
 	userID, ok := middleware.CurrentUserID(c)
 	if !ok {
@@ -166,37 +171,6 @@ func (h *Handler) ExceptionClose(c *gin.Context) {
 	response.Success(c, order)
 }
 
-func (h *Handler) AdminExceptionClose(c *gin.Context) {
-	adminID, ok := middleware.CurrentUserID(c)
-	if !ok {
-		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
-		return
-	}
-
-	orderID, err := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err != nil || orderID == 0 {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid order id")
-		return
-	}
-
-	var req cancelOrderRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "reason is required")
-		return
-	}
-
-	order, err := h.service.AdminExceptionClose(c.Request.Context(), ExceptionCloseOrderInput{
-		OrderID: orderID,
-		UserID:  adminID,
-		Reason:  req.Reason,
-	})
-	if err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
-		return
-	}
-	response.Success(c, order)
-}
-
 func (h *Handler) GetByID(c *gin.Context) {
 	userID, ok := middleware.CurrentUserID(c)
 	if !ok {
@@ -267,4 +241,56 @@ func (h *Handler) CancelExpired(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"cancelledCount": count})
+}
+
+func (h *Handler) AdminList(c *gin.Context) {
+	status := c.Query("status")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
+
+	orders, total, err := h.service.AdminList(c.Request.Context(), status, page, pageSize)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		return
+	}
+	response.Success(c, gin.H{
+		"items":    orders,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+	})
+}
+
+func (h *Handler) AdminUpdateStatus(c *gin.Context) {
+	adminID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	orderID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || orderID == 0 {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid order id")
+		return
+	}
+
+	var req adminUpdateOrderStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+
+	ipAddress := c.ClientIP()
+	order, err := h.service.AdminUpdateStatus(c.Request.Context(), AdminUpdateOrderStatusInput{
+		AdminID:   adminID,
+		OrderID:   orderID,
+		Status:    req.Status,
+		Reason:    req.Reason,
+		IPAddress: &ipAddress,
+	})
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		return
+	}
+	response.Success(c, order)
 }

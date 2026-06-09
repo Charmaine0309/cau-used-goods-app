@@ -1,6 +1,8 @@
 package appeal
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -28,6 +30,10 @@ type createAppealRequest struct {
 type handleAppealRequest struct {
 	Status       string `json:"status" binding:"required"`
 	HandleResult string `json:"handleResult" binding:"required"`
+}
+
+type closeAppealRequest struct {
+	CloseReason string `json:"closeReason"`
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -84,6 +90,36 @@ func (h *Handler) GetByID(c *gin.Context) {
 		return
 	}
 	item, err := h.service.GetByID(c.Request.Context(), appealID, userID, false)
+	if err != nil {
+		writeAppealError(c, err)
+		return
+	}
+	response.Success(c, item)
+}
+
+func (h *Handler) Close(c *gin.Context) {
+	userID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	appealID, err := parseID(c)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid appeal id")
+		return
+	}
+
+	var req closeAppealRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+
+	item, err := h.service.Close(c.Request.Context(), CloseAppealInput{
+		AppealID:    appealID,
+		AppellantID: userID,
+		CloseReason: req.CloseReason,
+	})
 	if err != nil {
 		writeAppealError(c, err)
 		return
@@ -152,6 +188,27 @@ func (h *Handler) AdminHandle(c *gin.Context) {
 	response.Success(c, item)
 }
 
+func (h *Handler) AdminMarkProcessing(c *gin.Context) {
+	adminID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	appealID, err := parseID(c)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid appeal id")
+		return
+	}
+
+	ipAddress := c.ClientIP()
+	item, err := h.service.MarkProcessing(c.Request.Context(), appealID, adminID, &ipAddress)
+	if err != nil {
+		writeAppealError(c, err)
+		return
+	}
+	response.Success(c, item)
+}
+
 func parseID(c *gin.Context) (uint64, error) {
 	return strconv.ParseUint(c.Param("id"), 10, 64)
 }
@@ -190,8 +247,9 @@ func writeAppealError(c *gin.Context, err error) {
 	case "invalid targetType", "invalid status", "appellantId is required", "targetType must be PRODUCT, USER, ORDER or REPORT",
 		"targetId is required", "reason is required", "reason cannot exceed 500 characters",
 		"evidenceUrls cannot exceed 9", "appealId is required", "adminId is required",
-		"status must be PROCESSING, APPROVED, REJECTED or CLOSED", "handleResult is required",
-		"handleResult cannot exceed 500 characters":
+		"status must be APPROVED or REJECTED", "handleResult is required",
+		"handleResult cannot exceed 500 characters", "appeal cannot be marked processing", "appeal cannot be closed",
+		"closeReason cannot exceed 500 characters":
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, message)
 	default:
 		response.Error(c, http.StatusInternalServerError, response.CodeInternal, message)

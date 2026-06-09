@@ -92,7 +92,6 @@ func main() {
 	adminService := admin.NewService(adminRepo)
 	adminHandler := admin.NewHandler(adminService)
 	sensitiveService.SetAdminLogger(adminService)
-	productService.SetAdminLogger(adminService)
 	sensitiveHandler := sensitive.NewHandler(sensitiveService)
 
 	appealRepo := appeal.NewRepository(db.DB())

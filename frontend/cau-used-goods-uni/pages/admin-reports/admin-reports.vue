@@ -34,21 +34,10 @@
       </view>
     </view>
 
-    <view class="type-board">
-      <view
-        v-for="item in boardItems"
-        :key="item.value"
-        :class="['type-item', activeTarget === item.value ? 'active' : '']"
-        @click="selectTarget(item.value)"
-      >
-        <text>{{ item.label }}</text>
-        <text>{{ countByTarget(item.value) }}</text>
-      </view>
-    </view>
 
     <view v-if="filteredItems.length === 0" class="empty">{{ emptyText }}</view>
 
-    <view v-for="item in filteredItems" :key="item.id" class="case-card" @click="toggleOpen(item.id)">
+    <view v-for="item in filteredItems" :key="item.id" class="case-card" @click="goRiskDetail(item)">
       <view class="card-head">
         <view class="card-main">
           <view class="case-title">{{ itemTitle(item) }}</view>
@@ -62,76 +51,6 @@
       <view class="meta-row">
         <text>{{ activeMode === 'REPORT' ? '举报人' : '申诉人' }}：{{ actorName(item) }}</text>
         <text>{{ shortTime(item.createTime) }}</text>
-      </view>
-
-      <view v-if="openedId === item.id" class="detail-panel" @click.stop>
-        <view v-if="targetProduct(item)" class="target-product" @click.stop="goProduct(targetProduct(item).id)">
-          <image
-            v-if="productCover(targetProduct(item))"
-            class="target-image"
-            :src="productCover(targetProduct(item))"
-            mode="aspectFill"
-          />
-          <view v-else class="target-image placeholder">商品</view>
-          <view class="target-main">
-            <view class="target-title">{{ targetProduct(item).title || '商品' }}</view>
-            <view class="target-meta">￥{{ targetProduct(item).price || 0 }} · {{ productStatusText(targetProduct(item).status) }}</view>
-          </view>
-          <text class="target-arrow">›</text>
-        </view>
-
-        <view class="detail-row">
-          <text>对象类型</text>
-          <text>{{ targetText(item.targetType) }}</text>
-        </view>
-        <view class="detail-row">
-          <text>对象 ID</text>
-          <text>#{{ item.targetId }}</text>
-        </view>
-        <view class="detail-row">
-          <text>当前状态</text>
-          <text>{{ statusText(item.status) }}</text>
-        </view>
-        <view class="detail-row">
-          <text>{{ activeMode === 'REPORT' ? '举报原因' : '申诉理由' }}</text>
-          <text>{{ itemTitle(item) }}</text>
-        </view>
-        <view v-if="item.handleTime" class="detail-row">
-          <text>处理时间</text>
-          <text>{{ shortTime(item.handleTime) }}</text>
-        </view>
-
-        <view v-if="item.images?.length" class="image-grid">
-          <image
-            v-for="url in item.images"
-            :key="url"
-            class="case-image"
-            :src="url"
-            mode="aspectFill"
-            @click.stop="previewImage(url, item.images)"
-          />
-        </view>
-
-        <view v-if="item.handleResult" class="handle-result">{{ item.handleResult }}</view>
-
-        <view v-if="canHandle(item.status)" class="actions">
-          <button v-if="item.status === 'PENDING'" size="mini" class="process" @click.stop="handleCurrent(item.id, 'PROCESSING')">
-            开始处理
-          </button>
-          <button v-if="activeMode === 'REPORT'" size="mini" class="pass" @click.stop="handleCurrent(item.id, 'RESOLVED')">
-            处理完成
-          </button>
-          <button v-if="activeMode === 'REPORT'" size="mini" class="reject" @click.stop="openReasonModal(item.id, 'REJECTED')">
-            驳回
-          </button>
-          <button v-if="activeMode === 'APPEAL'" size="mini" class="pass" @click.stop="handleCurrent(item.id, 'APPROVED')">
-            通过申诉
-          </button>
-          <button v-if="activeMode === 'APPEAL'" size="mini" class="reject" @click.stop="openReasonModal(item.id, 'REJECTED')">
-            驳回申诉
-          </button>
-          <button size="mini" class="close" @click.stop="openReasonModal(item.id, 'CLOSED')">关闭</button>
-        </view>
       </view>
     </view>
 
@@ -180,7 +99,9 @@ import {
   getAdminAppeals,
   getAdminReports,
   handleAdminAppeal,
-  handleAdminReport
+  handleAdminReport,
+  markAdminAppealProcessing,
+  markAdminReportProcessing
 } from '../../api/admin'
 import { getProductById } from '../../api/product'
 import { normalizeImage } from '../../utils/product-format'
@@ -246,7 +167,6 @@ const reasonOptions = {
 
 const currentItems = computed(() => activeMode.value === 'REPORT' ? reports.value : appeals.value)
 const currentFilters = computed(() => activeMode.value === 'REPORT' ? reportFilters : appealFilters)
-const boardItems = computed(() => currentFilters.value.filter((item) => item.value !== 'ALL'))
 
 const pendingReports = computed(() => reports.value.filter((item) => ['PENDING', 'PROCESSING'].includes(item.status)).length)
 const pendingAppeals = computed(() => appeals.value.filter((item) => ['PENDING', 'PROCESSING'].includes(item.status)).length)
@@ -307,6 +227,11 @@ const selectTarget = (targetType) => {
 
 const toggleOpen = (id) => {
   openedId.value = openedId.value === id ? null : id
+}
+
+const goRiskDetail = (item) => {
+  if (!item?.id) return
+  uni.navigateTo({ url: `/pages/admin-risk-detail/admin-risk-detail?mode=${activeMode.value}&id=${item.id}` })
 }
 
 const loadTargetProducts = async (items) => {
@@ -466,9 +391,17 @@ const handleCurrent = async (id, status) => {
       if (!res.confirm) return
       try {
         if (activeMode.value === 'REPORT') {
-          await handleAdminReport(id, status, `举报${action}`)
+          if (status === 'PROCESSING') {
+            await markAdminReportProcessing(id)
+          } else {
+            await handleAdminReport(id, status, `举报${action}`)
+          }
         } else {
-          await handleAdminAppeal(id, status, `申诉${action}`)
+          if (status === 'PROCESSING') {
+            await markAdminAppealProcessing(id)
+          } else {
+            await handleAdminAppeal(id, status, `申诉${action}`)
+          }
         }
         uni.showToast({ title: '处理成功', icon: 'success' })
         openedId.value = null
@@ -596,40 +529,6 @@ const handleCurrent = async (id, status) => {
   font-weight: 700;
 }
 
-.type-board {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14rpx;
-  margin-bottom: 24rpx;
-}
-
-.type-item {
-  padding: 22rpx 16rpx;
-  border-radius: 14rpx;
-  background: #fff;
-  text-align: center;
-  font-size: 24rpx;
-  color: #667085;
-  border: 2rpx solid transparent;
-}
-
-.type-item text:last-child {
-  display: block;
-  margin-top: 10rpx;
-  font-size: 34rpx;
-  font-weight: 700;
-  color: #1f2933;
-}
-
-.type-item.active {
-  border-color: #17a84b;
-  background: #f0fdf4;
-}
-
-.type-item.active text:first-child,
-.type-item.active text:last-child {
-  color: #16a34a;
-}
 
 .case-card,
 .empty {

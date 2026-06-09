@@ -21,7 +21,8 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMid
 	adminGroup := r.Group("/admin/orders")
 	adminGroup.Use(authMiddleware, adminMiddleware)
 	{
+		adminGroup.GET("", handler.AdminList)
 		adminGroup.POST("/cleanup-expired", handler.CancelExpired)
-		adminGroup.POST("/:id/exception-close", handler.AdminExceptionClose)
+		adminGroup.PUT("/:id/status", handler.AdminUpdateStatus)
 	}
 }

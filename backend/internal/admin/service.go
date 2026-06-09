@@ -103,16 +103,10 @@ func (s *Service) UpdateAnnouncementStatus(ctx context.Context, input UpdateAnno
 		return err
 	}
 
-	operationType := OperationStatusNotice
-	if input.Status == AnnouncementStatusPublished {
-		operationType = OperationNoticePublish
-	} else if input.Status == AnnouncementStatusOffline {
-		operationType = OperationNoticeOffline
-	}
-	description := fmt.Sprintf("announcement status: %s", input.Status)
+	description := fmt.Sprintf("update announcement status: %s", input.Status)
 	_, err := s.LogAction(ctx, LogActionInput{
 		AdminID:       input.AdminID,
-		OperationType: operationType,
+		OperationType: OperationStatusNotice,
 		TargetType:    TargetTypeNotice,
 		TargetID:      input.ID,
 		Description:   &description,
@@ -133,7 +127,7 @@ func (s *Service) DeleteAnnouncement(ctx context.Context, adminID, id uint64, ip
 	description := "offline announcement by delete operation"
 	_, err := s.LogAction(ctx, LogActionInput{
 		AdminID:       adminID,
-		OperationType: OperationNoticeOffline,
+		OperationType: OperationDeleteNotice,
 		TargetType:    TargetTypeNotice,
 		TargetID:      id,
 		Description:   &description,
