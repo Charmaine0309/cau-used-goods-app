@@ -42,7 +42,15 @@ WAIT_MEET（待见面）
 | POST | `/orders/:id/cancel` | 取消订单 | 登录+认证（买卖双方）|
 | POST | `/orders/:id/complete` | 完成订单 | 登录+认证（卖家）|
 | POST | `/orders/:id/exception-close` | 异常关闭订单 | 登录+认证（买卖双方）|
-| POST | `/admin/orders/cleanup-expired` | 清理超时订单 | 登录+认证 |
+
+### 管理员端
+
+| 方法 | 路径 | 说明 | 权限 |
+|------|------|------|------|
+| PUT | `/admin/orders/:id/status` | 管理员修改订单状态 | 登录+管理员 |
+| POST | `/admin/orders/:id/exception-close` | 管理员异常关闭订单 | 登录+管理员 |
+
+超时未确认订单由后端服务启动的定时任务自动清理，不再暴露管理员清理接口。
 
 ## 权限校验
 
@@ -70,6 +78,14 @@ UPDATE products SET status = 'LOCKED' WHERE id = ? AND status = 'ON_SALE'
 
 如果 `RowsAffected = 0`，说明商品已被其他订单锁定，返回错误。
 
+当前实现中，普通订单创建/取消/完成会在同一个事务内同时修改订单和商品状态：
+
+- 创建订单：锁定商品 + 创建订单同事务。
+- 取消订单：恢复商品 + 订单置为 `CANCELED` 同事务。
+- 完成订单：商品置为 `SOLD` + 订单置为 `COMPLETED` 同事务。
+
+管理员修改订单状态和管理员异常关闭订单也在同一事务内完成订单状态、商品状态和 `admin_logs` 写入。
+
 ## 与概要设计一致的地方
 
 - 订单状态定义一致
@@ -84,6 +100,24 @@ UPDATE products SET status = 'LOCKED' WHERE id = ? AND status = 'ON_SALE'
 - 异常关闭后商品恢复为 `ON_SALE` 状态
 - 需要填写关闭原因
 
+管理员异常关闭需要额外填写责任方 `responsibleParty=BUYER/SELLER`：
+
+- `BUYER` 责任：商品恢复为 `ON_SALE`。
+- `SELLER` 责任：商品下架为 `OFF_SHELF` 并记录原因。
+
+管理员订单状态接口和异常关闭接口都支持可选关联来源，但 `EXCEPTION_CLOSED` 必须走专门的异常关闭接口：
+
+```json
+{
+  "reason": "举报成立，管理员异常关闭订单",
+  "responsibleParty": "SELLER",
+  "relatedType": "REPORT",
+  "relatedId": 123
+}
+```
+
+`PUT /admin/orders/:id/status` 只用于 `PENDING_CONFIRM`、`WAIT_MEET`、`COMPLETED`、`CANCELED` 等普通后台状态修正；`relatedType/relatedId` 必须同时传或同时不传。传入时仅允许 `REPORT` 或 `APPEAL`，并校验对应举报/申诉存在且目标对象是当前订单。
+
 ## 消息通知
 
 订单模块已对接消息模块，在以下场景自动发送消息通知：
@@ -95,6 +129,8 @@ UPDATE products SET status = 'LOCKED' WHERE id = ? AND status = 'ON_SALE'
 | 取消订单 | 对方 | ORDER_CANCELED | 通知对方订单已取消 |
 | 完成订单 | 买家 | ORDER_CONFIRMED | 提醒买家交易完成，欢迎评价 |
 | 超时取消 | 买卖双方 | ORDER_TIMEOUT | 通知双方订单因超时自动取消 |
+
+超时取消任务每 1 分钟执行一次，使用数据库时间判断 `expire_time < NOW()`，并在更新订单时限定 `status='PENDING_CONFIRM'`。只有成功更新到订单的执行者才会解锁商品和发送消息，避免并发重复处理。
 
 ## 仍需讨论的问题
 

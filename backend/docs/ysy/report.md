@@ -12,7 +12,7 @@
 ## 核心规则
 
 1. 举报类型：`PRODUCT`（商品）、`USER`（用户）、`ORDER`（订单）
-2. 举报状态：`PENDING`（待处理）、`PROCESSING`（处理中）、`RESOLVED`（已解决）、`REJECTED`（已驳回）、`CLOSED`（已关闭）
+2. 举报状态：`PENDING`（待处理）、`PROCESSING`（处理中）、`APPROVED`（举报成立）、`REJECTED`（已驳回）、`CLOSED`（已关闭）
 3. 同一用户对同一目标只能有一个待处理的举报
 4. 举报可以附带多张凭证图片
 
@@ -59,6 +59,25 @@
 |------|--------|---------|------|
 | 举报处理完成 | 举报人 | REPORT_HANDLED | 告知举报人处理结果和处理说明 |
 
-## 仍需讨论的问题
+## 管理员处理边界
 
-- 举报成立后的后续操作（如下架商品、禁用用户）是否在本模块实现？
+- `/admin/reports/:id/handle` 只负责将举报处理为 `APPROVED` 或 `REJECTED`，写入处理说明、管理员日志并通知举报人。
+- 举报处理接口不再联动修改用户、商品或订单状态，也不接受 `accountStatus` 作为处置字段。
+- 举报成立后的后续操作由对应模块完成：
+
+```text
+封禁用户：PUT /admin/users/:id/status
+下架商品：PUT /admin/products/:id/status
+异常关闭订单：POST /admin/orders/:id/exception-close
+```
+
+- 基于举报进行处置时，后续接口可传：
+
+```json
+{
+  "relatedType": "REPORT",
+  "relatedId": 123
+}
+```
+
+这样 `admin_logs` 会记录具体处置对象，同时用 `related_type=REPORT`、`related_id=举报ID` 表示处置依据。

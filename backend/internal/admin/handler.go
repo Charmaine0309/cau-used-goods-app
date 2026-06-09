@@ -214,7 +214,8 @@ func (h *Handler) ListLogs(c *gin.Context) {
 		query.PageSize = 20
 	}
 
-	items, total, err := h.service.ListLogs(c.Request.Context(), query)
+	role, _ := middleware.CurrentRole(c)
+	items, total, err := h.service.ListLogs(c.Request.Context(), query, role == "SUPER_ADMIN")
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
 		return

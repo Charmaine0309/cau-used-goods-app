@@ -17,6 +17,8 @@ type User struct {
 	AuthStatus    string     `json:"authStatus"`
 	AccountStatus string     `json:"accountStatus"`
 	LastLoginTime *time.Time `json:"lastLoginTime,omitempty"`
+	IsDeleted     bool       `json:"-"`
+	TokenVersion  int        `json:"-"`
 }
 
 type Repository struct {
@@ -29,9 +31,9 @@ func NewRepository(db *sql.DB) *Repository {
 
 func (r *Repository) FindByOpenID(ctx context.Context, openid string) (*User, error) {
 	const query = `
-SELECT id, openid, nickname, avatar_url, role, auth_status, account_status, last_login_time
+SELECT id, openid, nickname, avatar_url, role, auth_status, account_status, last_login_time, is_deleted, token_version
 FROM users
-WHERE openid = ? AND is_deleted = 0
+WHERE openid = ?
 LIMIT 1`
 
 	var user User
@@ -44,6 +46,8 @@ LIMIT 1`
 		&user.AuthStatus,
 		&user.AccountStatus,
 		&user.LastLoginTime,
+		&user.IsDeleted,
+		&user.TokenVersion,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -75,6 +79,7 @@ VALUES (?, 'USER', 'UNVERIFIED', 'NORMAL', NOW(), NOW(), NOW(), 0)`
 		AuthStatus:    "UNVERIFIED",
 		AccountStatus: "NORMAL",
 		LastLoginTime: ptrTime(time.Now()),
+		TokenVersion:  0,
 	}, nil
 }
 
@@ -87,7 +92,7 @@ func (r *Repository) UpdateLastLoginTime(ctx context.Context, userID uint64) err
 }
 
 func (r *Repository) UpdateRole(ctx context.Context, userID uint64, role string) error {
-	const execSQL = `UPDATE users SET role = ?, update_time = NOW() WHERE id = ? AND is_deleted = 0`
+	const execSQL = `UPDATE users SET role = ?, update_time = NOW() WHERE id = ? AND is_deleted = 0 AND role <> 'SUPER_ADMIN'`
 	result, err := r.db.ExecContext(ctx, execSQL, role, userID)
 	if err != nil {
 		return fmt.Errorf("update user role: %w", err)
@@ -104,7 +109,7 @@ func (r *Repository) UpdateRole(ctx context.Context, userID uint64, role string)
 
 func (r *Repository) FindByID(ctx context.Context, userID uint64) (*User, error) {
 	const query = `
-SELECT id, openid, nickname, avatar_url, role, auth_status, account_status, last_login_time
+SELECT id, openid, nickname, avatar_url, role, auth_status, account_status, last_login_time, is_deleted, token_version
 FROM users
 WHERE id = ? AND is_deleted = 0
 LIMIT 1`
@@ -119,11 +124,33 @@ LIMIT 1`
 		&user.AuthStatus,
 		&user.AccountStatus,
 		&user.LastLoginTime,
+		&user.IsDeleted,
+		&user.TokenVersion,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("find user by id: %w", err)
+	}
+	return &user, nil
+}
+
+func (r *Repository) FindByIDIncludingDeleted(ctx context.Context, userID uint64) (*User, error) {
+	const query = `
+SELECT id, openid, nickname, avatar_url, role, auth_status, account_status, last_login_time, is_deleted, token_version
+FROM users
+WHERE id = ?
+LIMIT 1`
+
+	var user User
+	if err := r.db.QueryRowContext(ctx, query, userID).Scan(
+		&user.ID, &user.OpenID, &user.Nickname, &user.AvatarURL, &user.Role,
+		&user.AuthStatus, &user.AccountStatus, &user.LastLoginTime, &user.IsDeleted, &user.TokenVersion,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("find user including deleted: %w", err)
 	}
 	return &user, nil
 }

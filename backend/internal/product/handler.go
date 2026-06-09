@@ -67,17 +67,25 @@ func (h *Handler) AdminListCategories(c *gin.Context) {
 }
 
 func (h *Handler) AdminCreateCategory(c *gin.Context) {
+	adminID, ok := currentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
 	var req createCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
 		return
 	}
 
+	ipAddress := c.ClientIP()
 	id, err := h.service.CreateCategory(c.Request.Context(), CategoryCreateInput{
+		AdminID:   adminID,
 		Name:      req.Name,
 		ParentID:  req.ParentID,
 		SortOrder: req.SortOrder,
 		Status:    req.Status,
+		IPAddress: &ipAddress,
 	})
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
@@ -87,6 +95,11 @@ func (h *Handler) AdminCreateCategory(c *gin.Context) {
 }
 
 func (h *Handler) AdminUpdateCategory(c *gin.Context) {
+	adminID, ok := currentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
@@ -99,12 +112,15 @@ func (h *Handler) AdminUpdateCategory(c *gin.Context) {
 		return
 	}
 
+	ipAddress := c.ClientIP()
 	if err := h.service.UpdateCategory(c.Request.Context(), CategoryUpdateInput{
+		AdminID:   adminID,
 		ID:        id,
 		Name:      req.Name,
 		ParentID:  req.ParentID,
 		SortOrder: req.SortOrder,
 		Status:    req.Status,
+		IPAddress: &ipAddress,
 	}); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
@@ -113,6 +129,11 @@ func (h *Handler) AdminUpdateCategory(c *gin.Context) {
 }
 
 func (h *Handler) AdminUpdateCategoryStatus(c *gin.Context) {
+	adminID, ok := currentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
@@ -125,7 +146,8 @@ func (h *Handler) AdminUpdateCategoryStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.UpdateCategoryStatus(c.Request.Context(), id, req.Status); err != nil {
+	ipAddress := c.ClientIP()
+	if err := h.service.UpdateCategoryStatus(c.Request.Context(), adminID, id, req.Status, &ipAddress, ""); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
@@ -136,13 +158,19 @@ func (h *Handler) AdminUpdateCategoryStatus(c *gin.Context) {
 }
 
 func (h *Handler) AdminDeleteCategory(c *gin.Context) {
+	adminID, ok := currentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
 		return
 	}
 
-	if err := h.service.UpdateCategoryStatus(c.Request.Context(), id, "DISABLED"); err != nil {
+	ipAddress := c.ClientIP()
+	if err := h.service.UpdateCategoryStatus(c.Request.Context(), adminID, id, "DISABLED", &ipAddress, "DELETE_CATEGORY"); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
@@ -361,8 +389,10 @@ type updateProductStatusRequest struct {
 }
 
 type adminUpdateProductStatusRequest struct {
-	Status string `json:"status" binding:"required"`
-	Reason string `json:"reason"`
+	Status      string `json:"status" binding:"required"`
+	Reason      string `json:"reason"`
+	RelatedType string `json:"relatedType"`
+	RelatedID   uint64 `json:"relatedId"`
 }
 
 func (h *Handler) UpdateProductStatus(c *gin.Context) {
@@ -421,11 +451,13 @@ func (h *Handler) AdminUpdateProductStatus(c *gin.Context) {
 
 	ipAddress := c.ClientIP()
 	if err := h.service.AdminUpdateProductStatus(c.Request.Context(), AdminUpdateProductStatusInput{
-		AdminID:   adminID,
-		ProductID: productID,
-		Status:    req.Status,
-		Reason:    req.Reason,
-		IPAddress: &ipAddress,
+		AdminID:     adminID,
+		ProductID:   productID,
+		Status:      req.Status,
+		Reason:      req.Reason,
+		IPAddress:   &ipAddress,
+		RelatedType: req.RelatedType,
+		RelatedID:   req.RelatedID,
 	}); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
@@ -502,7 +534,7 @@ func currentUserID(c *gin.Context) (uint64, bool) {
 
 func isValidProductStatus(status string) bool {
 	switch status {
-	case "ON_SALE", "OFF_SHELF", "LOCKED", "SOLD", "DELETED", "ALL":
+	case "ON_SALE":
 		return true
 	default:
 		return false

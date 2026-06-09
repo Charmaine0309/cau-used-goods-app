@@ -3,13 +3,14 @@ package admin
 import "time"
 
 const (
-	TargetTypeUser    = "USER"
-	TargetTypeProduct = "PRODUCT"
-	TargetTypeOrder   = "ORDER"
-	TargetTypeReport  = "REPORT"
-	TargetTypeNotice  = "NOTICE"
-	TargetTypeWord    = "WORD"
-	TargetTypeAppeal  = "APPEAL"
+	TargetTypeUser     = "USER"
+	TargetTypeProduct  = "PRODUCT"
+	TargetTypeOrder    = "ORDER"
+	TargetTypeReport   = "REPORT"
+	TargetTypeNotice   = "NOTICE"
+	TargetTypeWord     = "WORD"
+	TargetTypeAppeal   = "APPEAL"
+	TargetTypeCategory = "CATEGORY"
 )
 
 const (
@@ -19,14 +20,33 @@ const (
 )
 
 const (
-	OperationCreateNotice = "CREATE_NOTICE"
-	OperationUpdateNotice = "UPDATE_NOTICE"
-	OperationStatusNotice = "STATUS_NOTICE"
-	OperationDeleteNotice = "DELETE_NOTICE"
-	OperationCreateWord   = "CREATE_WORD"
-	OperationUpdateWord   = "UPDATE_WORD"
-	OperationDeleteWord   = "DELETE_WORD"
-	OperationHandleAppeal = "HANDLE_APPEAL"
+	OperationCreateNotice         = "CREATE_NOTICE"
+	OperationUpdateNotice         = "UPDATE_NOTICE"
+	OperationStatusNotice         = "STATUS_NOTICE"
+	OperationDeleteNotice         = "DELETE_NOTICE"
+	OperationCreateWord           = "CREATE_WORD"
+	OperationUpdateWord           = "UPDATE_WORD"
+	OperationDeleteWord           = "DELETE_WORD"
+	OperationCreateCategory       = "CREATE_CATEGORY"
+	OperationUpdateCategory       = "UPDATE_CATEGORY"
+	OperationStatusCategory       = "STATUS_CATEGORY"
+	OperationDeleteCategory       = "DELETE_CATEGORY"
+	OperationMarkReportProcessing = "MARK_REPORT_PROCESSING"
+	OperationApproveReport        = "APPROVE_REPORT"
+	OperationRejectReport         = "REJECT_REPORT"
+	OperationMarkAppealProcessing = "MARK_APPEAL_PROCESSING"
+	OperationApproveAppeal        = "APPROVE_APPEAL"
+	OperationRejectAppeal         = "REJECT_APPEAL"
+	OperationUserDisable          = "USER_DISABLE"
+	OperationUserEnable           = "USER_ENABLE"
+	OperationUserBan              = "USER_BAN"
+	OperationUserUnban            = "USER_UNBAN"
+	OperationUserRoleChange       = "USER_ROLE_CHANGE"
+	OperationStudentVerifyApprove = "STUDENT_VERIFY_APPROVE"
+	OperationStudentVerifyReject  = "STUDENT_VERIFY_REJECT"
+	OperationUpdateProductStatus  = "UPDATE_PRODUCT_STATUS"
+	OperationOrderExceptionClose  = "ORDER_EXCEPTION_CLOSE"
+	OperationUpdateOrderStatus    = "UPDATE_ORDER_STATUS"
 )
 
 type AdminLog struct {
@@ -37,6 +57,8 @@ type AdminLog struct {
 	TargetID      uint64    `json:"targetId"`
 	Description   *string   `json:"description,omitempty"`
 	IPAddress     *string   `json:"ipAddress,omitempty"`
+	RelatedType   *string   `json:"relatedType,omitempty"`
+	RelatedID     *uint64   `json:"relatedId,omitempty"`
 	CreateTime    time.Time `json:"createTime"`
 }
 
@@ -47,6 +69,8 @@ type LogActionInput struct {
 	TargetID      uint64
 	Description   *string
 	IPAddress     *string
+	RelatedType   *string
+	RelatedID     *uint64
 }
 
 type LogQuery struct {

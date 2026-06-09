@@ -22,7 +22,16 @@ func (r *Repository) Create(ctx context.Context, input CreateMessageInput) (uint
 		INSERT INTO messages (
 			receiver_id, sender_id, message_type, title, content,
 			related_type, related_id, read_status
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		)
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?
+		FROM DUAL
+		WHERE EXISTS (
+			SELECT 1
+			FROM users
+			WHERE id = ?
+			  AND is_deleted = 0
+			  AND account_status <> 'CANCELED'
+		)
 	`
 	result, err := r.db.ExecContext(
 		ctx,
@@ -35,9 +44,17 @@ func (r *Repository) Create(ctx context.Context, input CreateMessageInput) (uint
 		input.RelatedType,
 		input.RelatedID,
 		ReadStatusUnread,
+		input.ReceiverID,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("create message: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("check created message result: %w", err)
+	}
+	if affected == 0 {
+		return 0, nil
 	}
 
 	id, err := result.LastInsertId()
@@ -45,6 +62,23 @@ func (r *Repository) Create(ctx context.Context, input CreateMessageInput) (uint
 		return 0, fmt.Errorf("get created message id: %w", err)
 	}
 	return uint64(id), nil
+}
+
+func (r *Repository) CanReceiveMessage(ctx context.Context, receiverID uint64) (bool, error) {
+	var accountStatus string
+	var isDeleted bool
+	if err := r.db.QueryRowContext(ctx, `
+		SELECT account_status, is_deleted
+		FROM users
+		WHERE id = ?
+		LIMIT 1
+	`, receiverID).Scan(&accountStatus, &isDeleted); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("check receiver account status: %w", err)
+	}
+	return !isDeleted && accountStatus != "CANCELED", nil
 }
 
 func (r *Repository) ListByReceiver(ctx context.Context, receiverID uint64, readStatus string, page, pageSize int) ([]Message, int, error) {

@@ -2,21 +2,26 @@ package product
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
+	"cau-used-goods-app/backend/internal/admin"
+	"cau-used-goods-app/backend/internal/db"
 	"cau-used-goods-app/backend/internal/sensitive"
 )
 
 type Service struct {
 	repo             *Repository
 	sensitiveService *sensitive.Service
+	adminLogger      *admin.Service
 }
 
-func NewService(repo *Repository, sensitiveService *sensitive.Service) *Service {
+func NewService(repo *Repository, sensitiveService *sensitive.Service, adminLogger *admin.Service) *Service {
 	return &Service{
 		repo:             repo,
 		sensitiveService: sensitiveService,
+		adminLogger:      adminLogger,
 	}
 }
 
@@ -33,40 +38,65 @@ func (s *Service) ListAllCategories(ctx context.Context, status string) ([]Categ
 }
 
 type CategoryCreateInput struct {
+	AdminID   uint64
 	Name      string
 	ParentID  uint64
 	SortOrder int
 	Status    string
+	IPAddress *string
 }
 
 func (s *Service) CreateCategory(ctx context.Context, input CategoryCreateInput) (uint64, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.Status = strings.TrimSpace(input.Status)
+	if input.IPAddress != nil {
+		trimmed := strings.TrimSpace(*input.IPAddress)
+		input.IPAddress = &trimmed
+	}
 	if input.Status == "" {
 		input.Status = "ENABLED"
 	}
 	if err := validateCategoryInput(input.Name, input.Status); err != nil {
 		return 0, err
 	}
-	return s.repo.CreateCategory(ctx, CreateCategoryInput{
-		Name:      input.Name,
-		ParentID:  input.ParentID,
-		SortOrder: input.SortOrder,
-		Status:    input.Status,
+	var id uint64
+	description := fmt.Sprintf("create category: %s", input.Name)
+	err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		id, err = s.repo.CreateCategoryTx(ctx, tx, CreateCategoryInput{
+			Name:      input.Name,
+			ParentID:  input.ParentID,
+			SortOrder: input.SortOrder,
+			Status:    input.Status,
+		})
+		if err != nil {
+			return err
+		}
+		return s.logAdminActionTx(ctx, tx, input.AdminID, admin.OperationCreateCategory, admin.TargetTypeCategory, id, description, input.IPAddress, nil, nil)
 	})
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 type CategoryUpdateInput struct {
+	AdminID   uint64
 	ID        uint64
 	Name      string
 	ParentID  uint64
 	SortOrder int
 	Status    string
+	IPAddress *string
 }
 
 func (s *Service) UpdateCategory(ctx context.Context, input CategoryUpdateInput) error {
 	input.Name = strings.TrimSpace(input.Name)
 	input.Status = strings.TrimSpace(input.Status)
+	if input.IPAddress != nil {
+		trimmed := strings.TrimSpace(*input.IPAddress)
+		input.IPAddress = &trimmed
+	}
 	if input.Status == "" {
 		input.Status = "ENABLED"
 	}
@@ -79,24 +109,43 @@ func (s *Service) UpdateCategory(ctx context.Context, input CategoryUpdateInput)
 	if input.ParentID == input.ID {
 		return fmt.Errorf("category parent cannot be itself")
 	}
-	return s.repo.UpdateCategory(ctx, UpdateCategoryInput{
-		ID:        input.ID,
-		Name:      input.Name,
-		ParentID:  input.ParentID,
-		SortOrder: input.SortOrder,
-		Status:    input.Status,
+	description := fmt.Sprintf("update category: %s", input.Name)
+	return db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.UpdateCategoryTx(ctx, tx, UpdateCategoryInput{
+			ID:        input.ID,
+			Name:      input.Name,
+			ParentID:  input.ParentID,
+			SortOrder: input.SortOrder,
+			Status:    input.Status,
+		}); err != nil {
+			return err
+		}
+		return s.logAdminActionTx(ctx, tx, input.AdminID, admin.OperationUpdateCategory, admin.TargetTypeCategory, input.ID, description, input.IPAddress, nil, nil)
 	})
 }
 
-func (s *Service) UpdateCategoryStatus(ctx context.Context, id uint64, status string) error {
+func (s *Service) UpdateCategoryStatus(ctx context.Context, adminID, id uint64, status string, ipAddress *string, operationType string) error {
 	status = strings.TrimSpace(status)
+	if ipAddress != nil {
+		trimmed := strings.TrimSpace(*ipAddress)
+		ipAddress = &trimmed
+	}
 	if id == 0 {
 		return fmt.Errorf("category id is required")
 	}
 	if !isValidCategoryStatus(status) {
 		return fmt.Errorf("invalid category status")
 	}
-	return s.repo.UpdateCategoryStatus(ctx, id, status)
+	if operationType == "" {
+		operationType = admin.OperationStatusCategory
+	}
+	description := fmt.Sprintf("update category status to %s", status)
+	return db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.UpdateCategoryStatusTx(ctx, tx, id, status); err != nil {
+			return err
+		}
+		return s.logAdminActionTx(ctx, tx, adminID, operationType, admin.TargetTypeCategory, id, description, ipAddress, nil, nil)
+	})
 }
 
 func validateCategoryInput(name string, status string) error {
@@ -217,11 +266,13 @@ func (s *Service) UpdateProductStatus(ctx context.Context, productID uint64, sel
 }
 
 type AdminUpdateProductStatusInput struct {
-	AdminID   uint64
-	ProductID uint64
-	Status    string
-	Reason    string
-	IPAddress *string
+	AdminID     uint64
+	ProductID   uint64
+	Status      string
+	Reason      string
+	IPAddress   *string
+	RelatedType string
+	RelatedID   uint64
 }
 
 func (s *Service) AdminUpdateProductStatus(ctx context.Context, input AdminUpdateProductStatusInput) error {
@@ -233,6 +284,10 @@ func (s *Service) AdminUpdateProductStatus(ctx context.Context, input AdminUpdat
 	}
 	input.Status = strings.ToUpper(strings.TrimSpace(input.Status))
 	input.Reason = strings.TrimSpace(input.Reason)
+	relatedType, relatedID, err := normalizeAdminRelated(input.RelatedType, input.RelatedID)
+	if err != nil {
+		return err
+	}
 	if input.IPAddress != nil {
 		trimmed := strings.TrimSpace(*input.IPAddress)
 		input.IPAddress = &trimmed
@@ -243,7 +298,36 @@ func (s *Service) AdminUpdateProductStatus(ctx context.Context, input AdminUpdat
 	if len([]rune(input.Reason)) > 500 {
 		return fmt.Errorf("reason cannot exceed 500 characters")
 	}
-	return s.repo.AdminUpdateProductStatus(ctx, input)
+	description := fmt.Sprintf("update product status to %s", input.Status)
+	if input.Reason != "" {
+		description = fmt.Sprintf("%s: %s", description, input.Reason)
+	}
+	return db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.ValidateRelatedRecordTx(ctx, tx, relatedType, relatedID, input.ProductID); err != nil {
+			return err
+		}
+		if err := s.repo.AdminUpdateProductStatusTx(ctx, tx, input); err != nil {
+			return err
+		}
+		return s.logAdminActionTx(ctx, tx, input.AdminID, admin.OperationUpdateProductStatus, admin.TargetTypeProduct, input.ProductID, description, input.IPAddress, relatedTypePtr(relatedType), relatedIDPtr(relatedID))
+	})
+}
+
+func (s *Service) logAdminActionTx(ctx context.Context, tx *sql.Tx, adminID uint64, operationType, targetType string, targetID uint64, description string, ipAddress *string, relatedType *string, relatedID *uint64) error {
+	if s.adminLogger == nil {
+		return fmt.Errorf("admin logger is not configured")
+	}
+	_, err := s.adminLogger.LogActionTx(ctx, tx, admin.LogActionInput{
+		AdminID:       adminID,
+		OperationType: operationType,
+		TargetType:    targetType,
+		TargetID:      targetID,
+		Description:   &description,
+		IPAddress:     ipAddress,
+		RelatedType:   relatedType,
+		RelatedID:     relatedID,
+	})
+	return err
 }
 
 func isValidAdminProductStatus(status string) bool {
@@ -253,6 +337,35 @@ func isValidAdminProductStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+func normalizeAdminRelated(relatedType string, relatedID uint64) (string, uint64, error) {
+	relatedType = strings.ToUpper(strings.TrimSpace(relatedType))
+	if (relatedType == "") != (relatedID == 0) {
+		return "", 0, fmt.Errorf("relatedType and relatedId must be provided together")
+	}
+	if relatedType != "" && relatedType != admin.TargetTypeReport && relatedType != admin.TargetTypeAppeal {
+		return "", 0, fmt.Errorf("relatedType must be REPORT or APPEAL")
+	}
+	return relatedType, relatedID, nil
+}
+
+func relatedTypePtr(relatedType string) *string {
+	if relatedType == "" {
+		return nil
+	}
+	return &relatedType
+}
+
+func relatedIDPtr(relatedID uint64) *uint64 {
+	if relatedID == 0 {
+		return nil
+	}
+	return &relatedID
+}
+
+func (s *Service) OffShelfOnSaleBySellerTx(ctx context.Context, tx *sql.Tx, sellerID uint64, reason string) ([]uint64, error) {
+	return s.repo.OffShelfOnSaleBySellerTx(ctx, tx, sellerID, reason)
 }
 
 type ProductImagesInput struct {

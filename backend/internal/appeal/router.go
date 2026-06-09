@@ -2,9 +2,9 @@ package appeal
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMiddleware, adminMiddleware gin.HandlerFunc) {
+func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, readableMiddleware, verifiedMiddleware, adminMiddleware gin.HandlerFunc) {
 	group := r.Group("/appeals")
-	group.Use(authMiddleware)
+	group.Use(authMiddleware, readableMiddleware)
 	{
 		group.POST("", handler.Create)
 		group.GET("/my", handler.ListMy)

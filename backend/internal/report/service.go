@@ -4,20 +4,23 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
+	"cau-used-goods-app/backend/internal/admin"
+	"cau-used-goods-app/backend/internal/db"
 	"cau-used-goods-app/backend/internal/message"
 	"cau-used-goods-app/backend/internal/sensitive"
 )
 
 type Service struct {
 	repo      *Repository
-	db        *sql.DB
 	sensitive *sensitive.Service
 	message   *message.Service
+	admin     *admin.Service
 }
 
-func NewService(repo *Repository, db *sql.DB, sensitiveService *sensitive.Service, messageService *message.Service) *Service {
-	return &Service{repo: repo, db: db, sensitive: sensitiveService, message: messageService}
+func NewService(repo *Repository, sensitiveService *sensitive.Service, messageService *message.Service, adminService *admin.Service) *Service {
+	return &Service{repo: repo, sensitive: sensitiveService, message: messageService, admin: adminService}
 }
 
 type CreateReportInput struct {
@@ -30,6 +33,24 @@ type CreateReportInput struct {
 }
 
 func (s *Service) Create(ctx context.Context, input CreateReportInput) (*ReportDetail, error) {
+	input.TargetType = strings.ToUpper(strings.TrimSpace(input.TargetType))
+	input.ReasonType = strings.TrimSpace(input.ReasonType)
+	if input.ReporterID == 0 {
+		return nil, fmt.Errorf("reporter id is required")
+	}
+	if input.TargetID == 0 {
+		return nil, fmt.Errorf("targetId is required")
+	}
+	if input.TargetType != "PRODUCT" && input.TargetType != "USER" && input.TargetType != "ORDER" {
+		return nil, fmt.Errorf("invalid targetType")
+	}
+	if input.ReasonType == "" {
+		return nil, fmt.Errorf("reasonType is required")
+	}
+	if err := s.repo.ValidateTarget(ctx, input.ReporterID, input.TargetType, input.TargetID); err != nil {
+		return nil, err
+	}
+
 	// 检查是否已举报
 	reported, err := s.repo.HasReported(ctx, input.ReporterID, input.TargetType, input.TargetID)
 	if err != nil {
@@ -40,13 +61,17 @@ func (s *Service) Create(ctx context.Context, input CreateReportInput) (*ReportD
 	}
 
 	// 敏感词检测
-	if input.Description != nil && *input.Description != "" {
-		checkResult, err := s.sensitive.CheckText(ctx, *input.Description)
-		if err != nil {
-			return nil, fmt.Errorf("sensitive word check failed: %w", err)
-		}
-		if !checkResult.Passed {
-			return nil, fmt.Errorf("report description contains sensitive words: %v", checkResult.HitWords)
+	if input.Description != nil {
+		description := strings.TrimSpace(*input.Description)
+		input.Description = &description
+		if description != "" && s.sensitive != nil {
+			checkResult, err := s.sensitive.CheckText(ctx, description)
+			if err != nil {
+				return nil, fmt.Errorf("sensitive word check failed: %w", err)
+			}
+			if !checkResult.Passed {
+				return nil, fmt.Errorf("report description contains sensitive words: %v", checkResult.HitWords)
+			}
 		}
 	}
 
@@ -135,11 +160,13 @@ type HandleReportInput struct {
 	HandlerID    uint64
 	Status       string
 	HandleResult *string
+	IPAddress    *string
 }
 
 type MarkReportProcessingInput struct {
 	ReportID  uint64
 	HandlerID uint64
+	IPAddress *string
 }
 
 type CloseReportInput struct {
@@ -156,12 +183,15 @@ func (s *Service) MarkProcessing(ctx context.Context, input MarkReportProcessing
 		return nil, fmt.Errorf("handler id is required")
 	}
 
-	if err := s.repo.MarkProcessing(ctx, input.ReportID, input.HandlerID); err != nil {
+	description := "mark report as PROCESSING"
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.MarkProcessingTx(ctx, tx, input.ReportID, input.HandlerID); err != nil {
+			return err
+		}
+		return s.logAdminActionTx(ctx, tx, input.HandlerID, input.ReportID, admin.OperationMarkReportProcessing, description, input.IPAddress)
+	}); err != nil {
 		return nil, err
 	}
-
-	result := "mark report as processing"
-	_ = s.logAdminAction(ctx, input.HandlerID, input.ReportID, "PROCESSING", &result)
 
 	return s.GetByID(ctx, input.ReportID)
 }
@@ -182,12 +212,18 @@ func (s *Service) Handle(ctx context.Context, input HandleReportInput) (*ReportD
 		return nil, fmt.Errorf("report cannot be handled")
 	}
 
-	if err := s.repo.UpdateStatus(ctx, input.ReportID, input.Status, input.HandleResult, input.HandlerID); err != nil {
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.UpdateStatusTx(ctx, tx, input.ReportID, input.Status, input.HandleResult, input.HandlerID); err != nil {
+			return err
+		}
+		description := fmt.Sprintf("handle report #%d: %s", input.ReportID, input.Status)
+		if input.HandleResult != nil && strings.TrimSpace(*input.HandleResult) != "" {
+			description = fmt.Sprintf("%s; result=%s", description, strings.TrimSpace(*input.HandleResult))
+		}
+		return s.logAdminActionTx(ctx, tx, input.HandlerID, input.ReportID, reportOperationType(input.Status), description, input.IPAddress)
+	}); err != nil {
 		return nil, err
 	}
-
-	// 写入管理员操作日志
-	_ = s.logAdminAction(ctx, input.HandlerID, input.ReportID, input.Status, input.HandleResult)
 
 	// 通知举报人处理结果
 	if s.message != nil {
@@ -239,26 +275,28 @@ func (s *Service) Close(ctx context.Context, input CloseReportInput) (*ReportDet
 	return s.GetByID(ctx, input.ReportID)
 }
 
-func (s *Service) logAdminAction(ctx context.Context, adminID, reportID uint64, status string, handleResult *string) error {
-	var actionType string
+func reportOperationType(status string) string {
 	switch status {
 	case "APPROVED":
-		actionType = "REPORT_APPROVE"
+		return admin.OperationApproveReport
 	case "REJECTED":
-		actionType = "REPORT_REJECT"
+		return admin.OperationRejectReport
 	default:
-		actionType = "REPORT_HANDLE"
+		return admin.OperationMarkReportProcessing
 	}
+}
 
-	result := ""
-	if handleResult != nil {
-		result = *handleResult
+func (s *Service) logAdminActionTx(ctx context.Context, tx *sql.Tx, adminID, reportID uint64, operationType string, description string, ipAddress *string) error {
+	if s.admin == nil {
+		return fmt.Errorf("admin logger is not configured")
 	}
-
-	query := `
-		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description)
-		VALUES (?, ?, 'REPORT', ?, ?)
-	`
-	_, err := s.db.ExecContext(ctx, query, adminID, actionType, reportID, result)
+	_, err := s.admin.LogActionTx(ctx, tx, admin.LogActionInput{
+		AdminID:       adminID,
+		OperationType: operationType,
+		TargetType:    admin.TargetTypeReport,
+		TargetID:      reportID,
+		Description:   &description,
+		IPAddress:     ipAddress,
+	})
 	return err
 }

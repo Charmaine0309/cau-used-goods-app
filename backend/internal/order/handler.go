@@ -30,8 +30,17 @@ type cancelOrderRequest struct {
 }
 
 type adminUpdateOrderStatusRequest struct {
-	Status string `json:"status" binding:"required"`
-	Reason string `json:"reason"`
+	Status      string `json:"status" binding:"required"`
+	Reason      string `json:"reason"`
+	RelatedType string `json:"relatedType"`
+	RelatedID   uint64 `json:"relatedId"`
+}
+
+type adminExceptionCloseRequest struct {
+	Reason           string `json:"reason" binding:"required"`
+	ResponsibleParty string `json:"responsibleParty" binding:"required"`
+	RelatedType      string `json:"relatedType"`
+	RelatedID        uint64 `json:"relatedId"`
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -140,8 +149,8 @@ func (h *Handler) Complete(c *gin.Context) {
 	response.Success(c, order)
 }
 
-func (h *Handler) ExceptionClose(c *gin.Context) {
-	userID, ok := middleware.CurrentUserID(c)
+func (h *Handler) AdminExceptionClose(c *gin.Context) {
+	adminID, ok := middleware.CurrentUserID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
@@ -153,16 +162,20 @@ func (h *Handler) ExceptionClose(c *gin.Context) {
 		return
 	}
 
-	var req cancelOrderRequest
+	var req adminExceptionCloseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "reason is required")
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "reason and responsibleParty are required")
 		return
 	}
 
-	order, err := h.service.ExceptionClose(c.Request.Context(), ExceptionCloseOrderInput{
-		OrderID: orderID,
-		UserID:  userID,
-		Reason:  req.Reason,
+	order, err := h.service.AdminExceptionClose(c.Request.Context(), AdminExceptionCloseOrderInput{
+		OrderID:          orderID,
+		AdminID:          adminID,
+		Reason:           req.Reason,
+		ResponsibleParty: req.ResponsibleParty,
+		IPAddress:        c.ClientIP(),
+		RelatedType:      req.RelatedType,
+		RelatedID:        req.RelatedID,
 	})
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
@@ -234,15 +247,6 @@ func (h *Handler) ListMyOrders(c *gin.Context) {
 	})
 }
 
-func (h *Handler) CancelExpired(c *gin.Context) {
-	count, err := h.service.CancelExpiredOrders(c.Request.Context())
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
-		return
-	}
-	response.Success(c, gin.H{"cancelledCount": count})
-}
-
 func (h *Handler) AdminUpdateStatus(c *gin.Context) {
 	adminID, ok := middleware.CurrentUserID(c)
 	if !ok {
@@ -264,11 +268,13 @@ func (h *Handler) AdminUpdateStatus(c *gin.Context) {
 
 	ipAddress := c.ClientIP()
 	order, err := h.service.AdminUpdateStatus(c.Request.Context(), AdminUpdateOrderStatusInput{
-		AdminID:   adminID,
-		OrderID:   orderID,
-		Status:    req.Status,
-		Reason:    req.Reason,
-		IPAddress: &ipAddress,
+		AdminID:     adminID,
+		OrderID:     orderID,
+		Status:      req.Status,
+		Reason:      req.Reason,
+		IPAddress:   &ipAddress,
+		RelatedType: req.RelatedType,
+		RelatedID:   req.RelatedID,
 	})
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())

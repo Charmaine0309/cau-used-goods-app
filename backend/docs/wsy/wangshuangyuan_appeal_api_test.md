@@ -135,7 +135,7 @@ WHERE openid = 'dev_appeal_admin_001';
 
 ## 四、准备商品申诉数据
 
-创建一个被下架商品，用于测试申诉通过后恢复上架。
+创建一个被下架商品，用于测试申诉通过后的人工恢复流程。
 
 ```sql
 INSERT INTO products (
@@ -152,7 +152,7 @@ INSERT INTO products (
   (SELECT id FROM users WHERE openid = 'dev_appeal_user_001' LIMIT 1),
   (SELECT id FROM categories ORDER BY id ASC LIMIT 1),
   '申诉测试商品',
-  '用于测试商品申诉通过后恢复上架',
+  '用于测试商品申诉通过后的人工恢复流程',
   30.00,
   '九成新',
   '学校西门',
@@ -289,7 +289,7 @@ Invoke-RestMethod `
   -Uri "$baseUrl/admin/appeals/$appealId/handle" `
   -Headers $adminHeaders `
   -ContentType "application/json" `
-  -Body '{"status":"APPROVED","handleResult":"申诉通过，商品恢复上架"}'
+  -Body '{"status":"APPROVED","handleResult":"申诉通过，可由管理员恢复商品状态"}'
 ```
 
 预期：
@@ -299,7 +299,7 @@ Invoke-RestMethod `
 - `handleResult` 为处理说明。
 - `handleTime` 不为空。
 
-### 5.8 检查商品是否恢复上架
+### 5.8 检查商品不会自动恢复上架
 
 进入 MySQL 执行：
 
@@ -312,11 +312,29 @@ WHERE id = 商品ID;
 预期：
 
 ```text
-status = ON_SALE
-off_shelf_reason = NULL
+status 仍为 OFF_SHELF
+off_shelf_reason 保持原值
 ```
 
-### 5.9 检查站内消息
+### 5.9 管理员通过商品状态接口恢复上架
+
+```powershell
+Invoke-RestMethod `
+  -Method Put `
+  -Uri "$baseUrl/admin/products/$productId/status" `
+  -Headers $adminHeaders `
+  -ContentType "application/json" `
+  -Body "{`"status`":`"ON_SALE`",`"reason`":`"申诉通过，恢复商品`",`"relatedType`":`"APPEAL`",`"relatedId`":$appealId}"
+```
+
+预期：
+
+```text
+商品 status = ON_SALE
+admin_logs 中存在 related_type = APPEAL, related_id = 申诉ID 的 UPDATE_PRODUCT_STATUS 记录
+```
+
+### 5.10 检查站内消息
 
 ```sql
 SELECT receiver_id, sender_id, message_type, title, content, related_type, related_id, read_status
@@ -332,7 +350,7 @@ WHERE related_type = 'APPEAL' AND related_id = 申诉ID;
 - `related_type = APPEAL`。
 - `read_status = UNREAD`。
 
-### 5.10 检查管理员日志
+### 5.11 检查管理员日志
 
 ```sql
 SELECT admin_id, operation_type, target_type, target_id, description
@@ -343,11 +361,13 @@ WHERE target_type = 'APPEAL' AND target_id = 申诉ID;
 预期：
 
 - `admin_id` 是管理员 ID。
-- `operation_type = HANDLE_APPEAL`。
+- 处理中写入 `operation_type = MARK_APPEAL_PROCESSING`。
+- 通过写入 `operation_type = APPROVE_APPEAL`。
+- 驳回写入 `operation_type = REJECT_APPEAL`。
 - `target_type = APPEAL`。
 - `target_id` 是申诉 ID。
 
-## 六、账号申诉联动测试
+## 六、账号申诉后续处置测试
 
 ### 6.1 准备被禁用用户
 
@@ -404,18 +424,42 @@ Invoke-RestMethod `
   -Body '{"status":"APPROVED","handleResult":"申诉通过，账号恢复正常"}'
 ```
 
+预期：
+
+```text
+申诉 status = APPROVED
+账号状态不会因为申诉 APPROVED 自动变化
+```
+
+### 6.4 管理员通过用户状态接口恢复账号
+
+```powershell
+Invoke-RestMethod `
+  -Method Put `
+  -Uri "$baseUrl/admin/users/$disabledId/status" `
+  -Headers $adminHeaders `
+  -ContentType "application/json" `
+  -Body "{`"accountStatus`":`"NORMAL`",`"reason`":`"申诉通过，恢复账号`",`"relatedType`":`"APPEAL`",`"relatedId`":$userAppealId}"
+```
+
 检查账号状态：
 
 ```sql
 SELECT id, account_status
 FROM users
 WHERE id = 禁用用户ID;
+
+SELECT operation_type, target_type, target_id, related_type, related_id
+FROM admin_logs
+WHERE related_type = 'APPEAL' AND related_id = 申诉ID
+ORDER BY id DESC;
 ```
 
 预期：
 
 ```text
 account_status = NORMAL
+admin_logs 中存在 related_type = APPEAL, related_id = 申诉ID 的 USER_ENABLE / USER_UNBAN 记录
 ```
 
 ## 七、异常场景测试
@@ -615,8 +659,8 @@ POST {{baseUrl}}/admin/appeals/{{appealId}}/handle
 - 用户只能查看自己的申诉
 - 管理员可以查看全部申诉
 - 管理员处理申诉正常
-- 商品申诉通过后恢复上架
-- 账号申诉通过后恢复 NORMAL
+- 商品申诉通过后不自动恢复上架，需通过商品状态接口处理
+- 账号申诉通过后不自动恢复 NORMAL，需通过用户状态接口处理
 - 处理后生成站内消息
 - 处理后写入管理员日志
 - 非法参数和权限拦截正常
