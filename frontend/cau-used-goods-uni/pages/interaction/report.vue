@@ -78,6 +78,12 @@ async function submit() {
 </script>
 
 <style scoped lang="scss">
+.page { min-height: 100vh; padding: 24rpx; background: #f6f8f5; }
+.card { box-sizing: border-box; width: 100%; padding: 26rpx 24rpx; border-radius: 20rpx; background: #fff; }
+.field { margin-bottom: 28rpx; }
+.field-label { display: block; margin-bottom: 14rpx; color: #425148; font-size: 27rpx; line-height: 1.5; }
+.picker-value { display: block; box-sizing: border-box; min-height: 76rpx; line-height: 1.5; word-break: break-all; }
+.textarea { line-height: 1.5; }
 .images { display: flex; gap: 16rpx; flex-wrap: wrap; }
 .images image, .image-add { width: 144rpx; height: 144rpx; border-radius: 14rpx; }
 .image-add { display: flex; align-items: center; justify-content: center; border: 1rpx dashed #b8c3bd; color: #91a098; background: #fbfcfb; font-size: 54rpx; }

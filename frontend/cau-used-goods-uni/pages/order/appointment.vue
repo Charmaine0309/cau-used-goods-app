@@ -7,7 +7,8 @@
     <view class="card">
       <view class="field">
         <text class="field-label">期望面交时间</text>
-        <input v-model="form.meetTime" class="input appointment-input" placeholder="如：今天 18:30" />
+        <input v-model="form.meetTime" class="input appointment-input" placeholder="格式：2026-06-10 18:30" />
+        <text class="field-tip">请填写完整日期和时间，例如：2026-06-10 18:30</text>
       </view>
       <view class="field">
         <text class="field-label">面交地点</text>
@@ -51,9 +52,14 @@ async function submit() {
     showError(new Error('请填写面交时间和地点'))
     return
   }
+  const meetTime = normalizeMeetTime(form.meetTime)
+  if (!meetTime) {
+    showError(new Error('时间格式应为：2026-06-10 18:30'))
+    return
+  }
   submitting.value = true
   try {
-    const order = await tradeService.createAppointment({ productId: productId.value, ...form })
+    const order = await tradeService.createAppointment({ productId: productId.value, ...form, meetTime })
     showSuccess('预约成功')
     setTimeout(() => navigate('/pages/order/detail', { id: order.id }), 500)
   } catch (error) {
@@ -62,8 +68,16 @@ async function submit() {
     submitting.value = false
   }
 }
+
+function normalizeMeetTime(value) {
+  const text = String(value || '').trim()
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(text)) return `${text}:00`
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)) return text
+  return ''
+}
 </script>
 
 <style scoped lang="scss">
 .appointment-input { min-height: 82rpx; line-height: 82rpx; }
+.field-tip { display: block; margin-top: 10rpx; color: #8a9690; font-size: 22rpx; line-height: 1.5; }
 </style>

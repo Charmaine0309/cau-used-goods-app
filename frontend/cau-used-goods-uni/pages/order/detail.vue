@@ -1,7 +1,7 @@
 <template>
   <view v-if="order" class="page">
     <view class="card status-card">
-      <view>
+      <view class="status-copy">
         <text class="status-title">{{ status.label }}</text>
         <text class="status-tip">{{ statusTip }}</text>
       </view>
@@ -13,12 +13,12 @@
     </view>
 
     <view class="card info">
-      <view><text>订单编号</text><text>{{ order.id }}</text></view>
-      <view><text>预约时间</text><text>{{ order.meetTime }}</text></view>
-      <view><text>面交地点</text><text>{{ order.meetLocation }}</text></view>
-      <view><text>备注</text><text>{{ order.remark || '无' }}</text></view>
-      <view v-if="order.expireTime && order.status === 'PENDING_CONFIRM'">
-        <text>确认时限</text><text>{{ order.expireTime }}</text>
+      <view class="info-row"><text class="info-label">订单编号</text><text class="info-value">{{ order.id }}</text></view>
+      <view class="info-row"><text class="info-label">预约时间</text><text class="info-value">{{ order.meetTime }}</text></view>
+      <view class="info-row"><text class="info-label">面交地点</text><text class="info-value">{{ order.meetLocation }}</text></view>
+      <view class="info-row"><text class="info-label">备注</text><text class="info-value">{{ order.remark || '无' }}</text></view>
+      <view v-if="order.expireTime && order.status === 'PENDING_CONFIRM'" class="info-row">
+        <text class="info-label">确认时限</text><text class="info-value">{{ order.expireTime }}</text>
       </view>
     </view>
 
@@ -56,6 +56,7 @@ const statusTip = computed(() => ({
   WAIT_MEET: '请按约定时间在校园内公共区域完成面交',
   COMPLETED: '线下交易已完成',
   CANCELED: '订单已关闭，商品将按规则恢复在售',
+  CANCELLED: '订单已关闭，商品将按规则恢复在售',
   EXCEPTION_CLOSED: '订单由管理员介入关闭'
 }[order.value?.status] || ''))
 
@@ -100,11 +101,87 @@ function report() {
 </script>
 
 <style scoped lang="scss">
-.status-card { display: flex; align-items: center; justify-content: space-between; }
-.status-card view { display: flex; flex-direction: column; gap: 10rpx; }
-.status-title { font-size: 36rpx; font-weight: 700; }
-.status-tip { color: #738077; font-size: 24rpx; }
-.info view { display: flex; justify-content: space-between; gap: 28rpx; padding: 15rpx 0; border-bottom: 1rpx solid #eef1ef; color: #738077; font-size: 25rpx; }
-.info view:last-child { border-bottom: 0; }
-.info view text:last-child { color: #36443c; text-align: right; }
+.page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  padding: 20rpx 24rpx 48rpx;
+}
+
+.card {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 20rpx;
+  padding: 24rpx;
+  border-radius: 20rpx;
+  background: #fff;
+}
+
+.status-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.status-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.status-title {
+  font-size: 36rpx;
+  font-weight: 700;
+}
+
+.status-tip {
+  color: #738077;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.info-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #eef1ef;
+  font-size: 25rpx;
+  line-height: 1.5;
+}
+
+.info-row:last-child {
+  border-bottom: 0;
+}
+
+.info-label {
+  flex: 0 0 150rpx;
+  color: #738077;
+}
+
+.info-value {
+  flex: 1;
+  min-width: 0;
+  color: #36443c;
+  text-align: right;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+
+.actions {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+}
+
+.actions .btn {
+  box-sizing: border-box;
+  min-width: 0;
+}
 </style>

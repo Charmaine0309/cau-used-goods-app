@@ -7,6 +7,20 @@ function absoluteImage(url) {
   return `${BASE_URL}${url}`
 }
 
+function pad(value) {
+  return String(value).padStart(2, '0')
+}
+
+function formatDateTime(value) {
+  if (!value) return ''
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(value)) {
+    return value.slice(0, 16)
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 function normalizeProduct(item = {}) {
   return {
     ...item,
@@ -21,7 +35,12 @@ function normalizeOrder(item = {}) {
     id: String(item.id),
     sellerName: item.sellerName || item.sellerNickname || '卖家',
     buyerName: item.buyerName || item.buyerNickname || '买家',
-    createdAt: item.createdAt || item.createTime,
+    createdAt: formatDateTime(item.createdAt || item.createTime),
+    meetTime: formatDateTime(item.meetTime),
+    expireTime: formatDateTime(item.expireTime),
+    confirmTime: formatDateTime(item.confirmTime),
+    finishTime: formatDateTime(item.finishTime),
+    closeTime: formatDateTime(item.closeTime),
     product: normalizeProduct(item.product || {
       id: item.productId,
       title: item.productTitleSnapshot,
@@ -39,7 +58,7 @@ function normalizeMessage(item = {}) {
     type: item.type || item.messageType,
     targetType: item.targetType || item.relatedType,
     targetId: item.targetId || item.relatedId,
-    createdAt: item.createdAt || item.createTime,
+    createdAt: formatDateTime(item.createdAt || item.createTime),
     read: item.read ?? item.readStatus === 'READ'
   }
 }
@@ -73,6 +92,6 @@ export const tradeService = {
     detail: item.description,
     result: item.handleResult,
     targetTypeLabel: TARGET_TYPE[item.targetType] || item.targetType,
-    createdAt: item.createTime
+    createdAt: formatDateTime(item.createTime || item.createdAt)
   }))
 }

@@ -11,7 +11,7 @@
           <text class="order-no">订单 {{ item.orderNo }}</text>
           <text class="status" :class="item.status">{{ getOrderStatusText(item.status) }}</text>
         </view>
-        <view class="body" @click="openDetail(item.productId)">
+        <view class="body" @click="openDetail(item)">
           <image v-if="item.productImage" class="cover" :src="normalizeImage(item.productImage)" mode="aspectFill" />
           <view v-else class="cover placeholder">暂无图片</view>
           <view class="content">
@@ -23,12 +23,12 @@
         </view>
         <view v-if="item.remark" class="remark">备注：{{ item.remark }}</view>
         <view class="foot">
-          <text class="time">{{ item.createTime }}</text>
+          <text class="time">{{ formatDateTime(item.createTime) }}</text>
           <view class="actions">
-            <button v-if="role === 'seller' && item.status === 'PENDING_CONFIRM'" class="action primary" @click="confirm(item)">确认</button>
-            <button v-if="role === 'seller' && item.status === 'WAIT_MEET'" class="action primary" @click="complete(item)">完成</button>
-            <button v-if="canCancel(item)" class="action warn" @click="cancel(item)">取消</button>
-            <button class="action" @click="openDetail(item.productId)">商品</button>
+            <button v-if="role === 'seller' && item.status === 'PENDING_CONFIRM'" class="action primary" @click.stop="confirm(item)">确认</button>
+            <button v-if="role === 'seller' && item.status === 'WAIT_MEET'" class="action primary" @click.stop="complete(item)">完成</button>
+            <button v-if="canCancel(item)" class="action warn" @click.stop="cancel(item)">取消</button>
+            <button class="action" @click.stop="openDetail(item)">商品</button>
           </view>
         </view>
       </view>
@@ -60,11 +60,20 @@ const orderStatusMap = {
   PENDING_CONFIRM: '待卖家确认',
   WAIT_MEET: '待面交',
   COMPLETED: '已完成',
+  CANCELED: '已取消',
   CANCELLED: '已取消',
   EXCEPTION_CLOSED: '异常关闭'
 }
 
 const getOrderStatusText = (status) => orderStatusMap[status] || status || '未知状态'
+const pad = (value) => String(value).padStart(2, '0')
+const formatDateTime = (value) => {
+  if (!value) return ''
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(value)) return value.slice(0, 16)
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 const peerName = (item) => role.value === 'buyer' ? (item.sellerNickname || 'CAU 同学') : (item.buyerNickname || 'CAU 同学')
 const canCancel = (item) => ['PENDING_CONFIRM', 'WAIT_MEET'].includes(item.status)
 
@@ -93,7 +102,15 @@ const switchRole = (value) => {
   loadOrders(true)
 }
 
-const openDetail = (productId) => uni.navigateTo({ url: `/pages/detail/detail?id=${productId}` })
+const getProductId = (item) => item?.productId || item?.product_id || item?.product?.id || item?.productID || ''
+const openDetail = (item) => {
+  const productId = typeof item === 'object' ? getProductId(item) : item
+  if (!productId) {
+    uni.showToast({ title: '商品信息缺失，暂时无法查看', icon: 'none' })
+    return
+  }
+  uni.navigateTo({ url: `/pages/detail/detail?id=${productId}` })
+}
 const goHome = () => uni.switchTab({ url: '/pages/home/home' })
 
 const confirm = (item) => {
@@ -178,9 +195,9 @@ onPullDownRefresh(() => loadOrders(true))
 .meta { margin-top: 10rpx; }
 .price { margin-top: 12rpx; color: #e36a3e; font-size: 32rpx; font-weight: 700; }
 .remark { margin-top: 16rpx; padding: 14rpx 18rpx; border-radius: 12rpx; background: #f6f8f5; color: #65706c; font-size: 23rpx; }
-.foot { margin-top: 18rpx; }
-.actions { gap: 10rpx; }
-.action { width: 92rpx; height: 56rpx; border-radius: 999rpx; background: #edf4f1; color: #23734f; font-size: 23rpx; line-height: 56rpx; }
+.foot { margin-top: 18rpx; align-items: flex-start; }
+.actions { justify-content: flex-end; gap: 10rpx; flex-wrap: wrap; }
+.action { box-sizing: border-box; width: auto; min-width: 116rpx; height: 58rpx; padding: 0 22rpx; border-radius: 999rpx; background: #edf4f1; color: #23734f; font-size: 24rpx; line-height: 58rpx; white-space: nowrap; }
 .action.primary { background: #23734f; color: #fff; }
 .action.warn { background: #f4f1ed; color: #9a7745; }
 .empty { margin-top: 140rpx; padding: 44rpx 28rpx; border-radius: 18rpx; background: #fff; text-align: center; }

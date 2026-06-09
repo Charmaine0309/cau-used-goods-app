@@ -15,7 +15,6 @@
       <view v-if="!isAdmin" class="menu-item" @click="goPublish">发布闲置商品<text>›</text></view>
       <view v-if="!isAdmin" class="menu-item" @click="goSoldOrders">我卖出的<text>›</text></view>
       <view v-if="!isAdmin" class="menu-item" @click="goBoughtOrders">我买到的<text>›</text></view>
-      <view v-if="!isAdmin" class="menu-item" @click="goOrderList">我的订单<text>›</text></view>
       <view v-if="!isAdmin" class="menu-item" @click="goFavorites">我的收藏<text>›</text></view>
       <view v-if="!isAdmin" class="menu-item" @click="goMessages">消息中心<text>›</text></view>
       <view v-if="!isAdmin" class="menu-item" @click="goReportList">我的举报<text>›</text></view>
@@ -76,7 +75,6 @@ const goPublish = () => uni.switchTab({ url: '/pages/publish/publish' })
 const goStudentAuth = () => uni.navigateTo({ url: '/pages/student-auth/student-auth' })
 const goAddress = () => uni.navigateTo({ url: '/pages/address/address' })
 const goAdmin = () => uni.navigateTo({ url: '/pages/admin/admin' })
-const goOrderList = () => uni.navigateTo({ url: '/pages/order/list' })
 const goFavorites = () => uni.navigateTo({ url: '/pages/interaction/favorites' })
 const goMessages = () => uni.switchTab({ url: '/pages/messages/messages' })
 const goReportList = () => uni.navigateTo({ url: '/pages/interaction/report-list' })

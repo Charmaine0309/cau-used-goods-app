@@ -17,10 +17,51 @@ defineProps({
 </script>
 
 <style scoped lang="scss">
-.product { display: flex; gap: 18rpx; align-items: center; }
-.product-image { width: 148rpx; height: 116rpx; border-radius: 14rpx; background: #edf2ef; }
-.product-body { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 8rpx; }
-.product-title { overflow: hidden; color: #243129; font-size: 28rpx; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.product-price { color: #d46d32; font-size: 30rpx; font-weight: 700; }
-.product-meta { color: #849089; font-size: 23rpx; }
+.product {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.product-image {
+  flex: 0 0 148rpx;
+  width: 148rpx;
+  height: 116rpx;
+  border-radius: 14rpx;
+  background: #edf2ef;
+}
+
+.product-body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.product-title {
+  overflow: hidden;
+  color: #243129;
+  font-size: 28rpx;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-price {
+  color: #d46d32;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.product-meta {
+  overflow: hidden;
+  color: #849089;
+  font-size: 23rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 </style>
