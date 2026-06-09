@@ -211,7 +211,7 @@
     <view v-else class="content">
       <view class="page-title">我的</view>
       <view class="profile-card">
-        <image v-if="currentUser.avatarUrl" class="avatar" :src="currentUser.avatarUrl" mode="aspectFill" />
+        <image v-if="adminAvatarUrl" class="avatar" :src="adminAvatarUrl" mode="aspectFill" />
         <view v-else class="avatar placeholder">管</view>
         <view class="profile-main">
           <view class="nickname">{{ currentUser.nickname || '管理员' }}</view>
@@ -255,6 +255,7 @@ import {
 } from '../../api/admin'
 import { getCurrentUser } from '../../api/auth'
 import { clearAuth, getUser, setUser } from '../../utils/auth'
+import { BASE_URL } from '../../utils/request'
 
 const activeTab = ref('data')
 const currentUser = ref(getUser() || {})
@@ -268,6 +269,14 @@ const productTrend = ref([])
 
 const riskTodoCount = computed(() => {
   return Number(reportOverview.value.pendingReports || 0) + Number(appealOverview.value.pendingAppeals || 0)
+})
+
+const adminAvatarUrl = computed(() => {
+  const url = currentUser.value?.avatarUrl || currentUser.value?.avatar_url || ''
+  if (!url) return ''
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  if (url.startsWith('/uploads/')) return BASE_URL + url
+  return url
 })
 
 const loadAdminData = async () => {
