@@ -14,7 +14,6 @@ POST /admin/appeals/:id/handle
 PUT /admin/users/:id/status
 PUT /admin/products/:id/status
 PUT /admin/orders/:id/status
-POST /admin/orders/cleanup-expired
 ```
 
 重点验证：
@@ -357,12 +356,13 @@ message = status must be APPROVED or REJECTED
 
 ```powershell
 $userId = 2
+$userReportId = 1 # 替换为 target_type=USER,target_id=$userId 的举报 ID
 
 Invoke-RestMethod `
   -Method PUT `
   -Uri "$baseUrl/admin/users/$userId/status" `
   -Headers $adminHeaders `
-  -Body '{"accountStatus":"DISABLED","reason":"举报成立，禁用账号"}'
+  -Body "{`"accountStatus`":`"DISABLED`",`"reason`":`"举报成立，禁用账号`",`"relatedType`":`"REPORT`",`"relatedId`":$userReportId}"
 ```
 
 预期：
@@ -379,20 +379,74 @@ SELECT id, account_status, is_deleted
 FROM users
 WHERE id = 2;
 
-SELECT id, operation_type, target_type, target_id, description
+SELECT id, operation_type, target_type, target_id, description, related_type, related_id
 FROM admin_logs
-WHERE operation_type = 'UPDATE_USER_STATUS'
+WHERE operation_type = 'USER_DISABLE'
 ORDER BY id DESC;
 ```
 
-### 7.2 恢复账号
+### 7.2 存在待确认订单时禁用账号应自动异常关闭订单
+
+准备条件：目标用户作为卖家或买家存在 `PENDING_CONFIRM` 订单，且不存在 `WAIT_MEET` 订单。
 
 ```powershell
+Invoke-WebRequest `
+  -Method PUT `
+  -Uri "$baseUrl/admin/users/$userId/status" `
+  -Headers $adminHeaders `
+  -Body '{"accountStatus":"DISABLED","reason":"待确认订单自动异常关闭测试","relatedType":"REPORT","relatedId":1}'
+```
+
+预期：
+
+```text
+HTTP 200
+用户 account_status = DISABLED
+相关 PENDING_CONFIRM 订单变为 EXCEPTION_CLOSED
+订单 cancel_reason 已记录，close_time 非空
+相关订单 admin_logs 写入 UPDATE_ORDER_STATUS/ORDER_EXCEPTION_CLOSE，并继承 related_type=REPORT、related_id=1
+相关商品按角色处理：
+- 被禁用用户是买家：商品恢复为 ON_SALE
+- 被禁用用户是卖家：相关锁定商品下架
+被禁用用户原有 ON_SALE 商品下架
+系统消息在事务提交后生成，订单消息 related_type=ORDER，账号消息 related_type=USER
+```
+
+注意：`relatedId=1` 只是示例，实际测试必须替换为目标用户匹配的举报 ID；否则关联来源校验会失败。
+
+### 7.3 存在待面交订单时禁用账号应失败
+
+准备条件：目标用户作为卖家或买家存在 `WAIT_MEET` 订单。
+
+```powershell
+Invoke-WebRequest `
+  -Method PUT `
+  -Uri "$baseUrl/admin/users/$userId/status" `
+  -Headers $adminHeaders `
+  -Body '{"accountStatus":"DISABLED","reason":"待面交订单阻断测试"}'
+```
+
+预期：
+
+```text
+HTTP 400
+message 包含待面交订单明细，例如：
+该用户作为卖家存在1个待面交订单，请先处理待面交订单后再修改账号状态
+用户状态不变
+订单状态不变
+商品状态不变
+```
+
+### 7.4 恢复账号
+
+```powershell
+$userAppealId = 1 # 替换为 target_type=USER,target_id=$userId 的申诉 ID
+
 Invoke-RestMethod `
   -Method PUT `
   -Uri "$baseUrl/admin/users/$userId/status" `
   -Headers $adminHeaders `
-  -Body '{"accountStatus":"NORMAL","reason":"申诉通过，恢复账号"}'
+  -Body "{`"accountStatus`":`"NORMAL`",`"reason`":`"申诉通过，恢复账号`",`"relatedType`":`"APPEAL`",`"relatedId`":$userAppealId}"
 ```
 
 预期：
@@ -403,10 +457,10 @@ accountStatus = NORMAL
 is_deleted = 0
 ```
 
-### 7.3 逻辑删除账号
+### 7.5 非法账号状态应失败
 
 ```powershell
-Invoke-RestMethod `
+Invoke-WebRequest `
   -Method PUT `
   -Uri "$baseUrl/admin/users/$userId/status" `
   -Headers $adminHeaders `
@@ -416,13 +470,11 @@ Invoke-RestMethod `
 预期：
 
 ```text
-HTTP 200
-accountStatus = DELETED
-is_deleted = 1
-不会物理删除 users 记录
+HTTP 400
+accountStatus 只能是 NORMAL、DISABLED 或 BANNED
 ```
 
-### 7.4 修改管理员账号状态应失败
+### 7.6 修改管理员账号状态应失败
 
 ```powershell
 $adminUserId = 1
@@ -447,12 +499,13 @@ HTTP 403
 
 ```powershell
 $productId = 1
+$productReportId = 1 # 替换为 target_type=PRODUCT,target_id=$productId 的举报 ID
 
 Invoke-RestMethod `
   -Method PUT `
   -Uri "$baseUrl/admin/products/$productId/status" `
   -Headers $adminHeaders `
-  -Body '{"status":"OFF_SHELF","reason":"举报成立，下架商品"}'
+  -Body "{`"status`":`"OFF_SHELF`",`"reason`":`"举报成立，下架商品`",`"relatedType`":`"REPORT`",`"relatedId`":$productReportId}"
 ```
 
 预期：
@@ -470,7 +523,7 @@ SELECT id, status, off_shelf_reason, is_deleted
 FROM products
 WHERE id = 1;
 
-SELECT id, operation_type, target_type, target_id, description
+SELECT id, operation_type, target_type, target_id, description, related_type, related_id
 FROM admin_logs
 WHERE operation_type = 'UPDATE_PRODUCT_STATUS'
 ORDER BY id DESC;
@@ -479,11 +532,13 @@ ORDER BY id DESC;
 ### 8.2 恢复商品上架
 
 ```powershell
+$productAppealId = 1 # 替换为 target_type=PRODUCT,target_id=$productId 的申诉 ID
+
 Invoke-RestMethod `
   -Method PUT `
   -Uri "$baseUrl/admin/products/$productId/status" `
   -Headers $adminHeaders `
-  -Body '{"status":"ON_SALE","reason":"申诉通过，恢复商品"}'
+  -Body "{`"status`":`"ON_SALE`",`"reason`":`"申诉通过，恢复商品`",`"relatedType`":`"APPEAL`",`"relatedId`":$productAppealId}"
 ```
 
 预期：
@@ -520,12 +575,13 @@ is_deleted = 1
 
 ```powershell
 $orderId = 1
+$orderReportId = 1 # 替换为 target_type=ORDER,target_id=$orderId 的举报 ID
 
 Invoke-RestMethod `
-  -Method PUT `
-  -Uri "$baseUrl/admin/orders/$orderId/status" `
+  -Method POST `
+  -Uri "$baseUrl/admin/orders/$orderId/exception-close" `
   -Headers $adminHeaders `
-  -Body '{"status":"EXCEPTION_CLOSED","reason":"举报成立，管理员异常关闭订单"}'
+  -Body "{`"reason`":`"举报成立，管理员异常关闭订单`",`"responsibleParty`":`"SELLER`",`"relatedType`":`"REPORT`",`"relatedId`":$orderReportId}"
 ```
 
 预期：
@@ -536,7 +592,7 @@ status = EXCEPTION_CLOSED
 cancel_reason 已记录
 cancel_by = 当前管理员 ID
 close_time 非空
-关联商品 status = ON_SALE
+responsibleParty = SELLER 时，关联商品 status = OFF_SHELF
 ```
 
 数据库检查：
@@ -551,9 +607,9 @@ FROM products p
 JOIN orders o ON o.product_id = p.id
 WHERE o.id = 1;
 
-SELECT id, operation_type, target_type, target_id, description
+SELECT id, operation_type, target_type, target_id, description, related_type, related_id
 FROM admin_logs
-WHERE operation_type = 'UPDATE_ORDER_STATUS'
+WHERE operation_type = 'ORDER_EXCEPTION_CLOSE'
 ORDER BY id DESC;
 ```
 
@@ -610,42 +666,19 @@ Invoke-WebRequest `
 
 ```text
 HTTP 400
-message = status must be PENDING_CONFIRM, WAIT_MEET, COMPLETED, CANCELED or EXCEPTION_CLOSED
+message = status must be PENDING_CONFIRM, WAIT_MEET, COMPLETED or CANCELED; use exception-close for EXCEPTION_CLOSED
 ```
 
-## 十、管理员清理超时订单权限测试
+## 十、超时订单清理说明
 
-### 10.1 管理员调用
+`POST /admin/orders/cleanup-expired` 管理员接口已移除，超时未确认订单由后端服务定时任务自动清理。
 
-```powershell
-Invoke-RestMethod `
-  -Method POST `
-  -Uri "$baseUrl/admin/orders/cleanup-expired" `
-  -Headers $adminHeaders
-```
+当前不再做该接口的权限测试。需要回归验证时，重点检查：
 
-预期：
-
-```text
-HTTP 200
-返回 cancelledCount
-```
-
-### 10.2 普通用户调用应失败
-
-```powershell
-Invoke-WebRequest `
-  -Method POST `
-  -Uri "$baseUrl/admin/orders/cleanup-expired" `
-  -Headers $userHeaders
-```
-
-预期：
-
-```text
-HTTP 403
-普通用户不能调用管理员清理接口
-```
+- 服务启动后每 1 分钟触发一次清理任务。
+- 仅 `status='PENDING_CONFIRM'` 且 `expire_time < NOW()` 的订单会被取消。
+- 只有数据库更新返回 `RowsAffected=1` 的订单才会解锁商品和发送超时通知。
+- 并发执行或多实例部署时，同一订单不会重复发送超时取消消息。
 
 ## 十一、回归测试建议
 
@@ -670,12 +703,12 @@ appeals: PENDING / PROCESSING / APPROVED / REJECTED / CLOSED
 
 ### 11.2 确认没有物理删除
 
-账号逻辑删除：
+账号注销：
 
 ```sql
 SELECT id, account_status, is_deleted
 FROM users
-WHERE account_status = 'DELETED';
+WHERE account_status = 'CANCELED';
 ```
 
 商品逻辑删除：

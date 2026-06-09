@@ -3,6 +3,7 @@ package report
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 )
 
@@ -152,8 +153,16 @@ func (r *Repository) ListAll(ctx context.Context, status string, page, pageSize 
 }
 
 func (r *Repository) UpdateStatus(ctx context.Context, reportID uint64, status string, handleResult *string, handlerID uint64) error {
+	return r.UpdateStatusTx(ctx, nil, reportID, status, handleResult, handlerID)
+}
+
+func (r *Repository) UpdateStatusTx(ctx context.Context, tx *sql.Tx, reportID uint64, status string, handleResult *string, handlerID uint64) error {
 	query := `UPDATE reports SET status = ?, handle_result = ?, handler_id = ?, handle_time = NOW() WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, query, status, handleResult, handlerID, reportID)
+	execer := reportExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	_, err := execer.ExecContext(ctx, query, status, handleResult, handlerID, reportID)
 	if err != nil {
 		return fmt.Errorf("update report status: %w", err)
 	}
@@ -180,7 +189,15 @@ func (r *Repository) Close(ctx context.Context, reportID uint64, reporterID uint
 }
 
 func (r *Repository) MarkProcessing(ctx context.Context, reportID uint64, handlerID uint64) error {
-	result, err := r.db.ExecContext(ctx, `
+	return r.MarkProcessingTx(ctx, nil, reportID, handlerID)
+}
+
+func (r *Repository) MarkProcessingTx(ctx context.Context, tx *sql.Tx, reportID uint64, handlerID uint64) error {
+	execer := reportExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, `
 		UPDATE reports
 		SET status = 'PROCESSING', handler_id = ?
 		WHERE id = ? AND status = 'PENDING'
@@ -198,6 +215,10 @@ func (r *Repository) MarkProcessing(ctx context.Context, reportID uint64, handle
 	return nil
 }
 
+type reportExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
 func (r *Repository) HasReported(ctx context.Context, reporterID uint64, targetType string, targetID uint64) (bool, error) {
 	query := `SELECT COUNT(*) FROM reports WHERE reporter_id = ? AND target_type = ? AND target_id = ? AND status IN ('PENDING', 'PROCESSING')`
 	var count int
@@ -205,6 +226,67 @@ func (r *Repository) HasReported(ctx context.Context, reporterID uint64, targetT
 		return false, fmt.Errorf("check reported: %w", err)
 	}
 	return count > 0, nil
+}
+
+func (r *Repository) ValidateTarget(ctx context.Context, reporterID uint64, targetType string, targetID uint64) error {
+	switch targetType {
+	case "PRODUCT":
+		var sellerID uint64
+		err := r.db.QueryRowContext(ctx, `
+			SELECT seller_id
+			FROM products
+			WHERE id = ? AND is_deleted = 0 AND status <> 'DELETED'
+			LIMIT 1
+		`, targetID).Scan(&sellerID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("report target not found")
+			}
+			return fmt.Errorf("check product report target: %w", err)
+		}
+		if sellerID == reporterID {
+			return fmt.Errorf("cannot report your own product")
+		}
+		return nil
+	case "USER":
+		var userID uint64
+		err := r.db.QueryRowContext(ctx, `
+			SELECT id
+			FROM users
+			WHERE id = ? AND is_deleted = 0
+			LIMIT 1
+		`, targetID).Scan(&userID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("report target not found")
+			}
+			return fmt.Errorf("check user report target: %w", err)
+		}
+		if userID == reporterID {
+			return fmt.Errorf("cannot report yourself")
+		}
+		return nil
+	case "ORDER":
+		var buyerID, sellerID uint64
+		err := r.db.QueryRowContext(ctx, `
+			SELECT buyer_id, seller_id
+			FROM orders
+			WHERE id = ?
+			LIMIT 1
+		`, targetID).Scan(&buyerID, &sellerID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("report target not found")
+			}
+			return fmt.Errorf("check order report target: %w", err)
+		}
+		if reporterID != buyerID && reporterID != sellerID {
+			return fmt.Errorf("permission denied")
+		}
+		return nil
+	default:
+		return fmt.Errorf("invalid targetType")
+	}
 }
 
 func scanReportDetail(row interface {

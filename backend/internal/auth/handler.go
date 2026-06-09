@@ -26,10 +26,15 @@ type devLoginRequest struct {
 	Role   string `json:"role"`
 }
 
+type reactivateRequest struct {
+	ReactivationToken string `json:"reactivationToken" binding:"required"`
+	Confirm           bool   `json:"confirm"`
+}
+
 func (h *Handler) DevLogin(c *gin.Context) {
 	var req devLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "请求参数格式不正确")
 		return
 	}
 
@@ -47,7 +52,7 @@ func (h *Handler) DevLogin(c *gin.Context) {
 func (h *Handler) WechatLogin(c *gin.Context) {
 	var req wechatLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "code is required")
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "微信登录 code 不能为空")
 		return
 	}
 
@@ -58,6 +63,20 @@ func (h *Handler) WechatLogin(c *gin.Context) {
 			return
 		}
 		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *Handler) Reactivate(c *gin.Context) {
+	var req reactivateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "请求参数格式不正确")
+		return
+	}
+	result, err := h.service.Reactivate(c.Request.Context(), req.ReactivationToken, req.Confirm)
+	if err != nil {
+		response.Error(c, http.StatusConflict, response.CodeConflict, err.Error())
 		return
 	}
 	response.Success(c, result)

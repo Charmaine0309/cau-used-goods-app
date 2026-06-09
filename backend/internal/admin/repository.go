@@ -18,11 +18,19 @@ func NewRepository(db *sql.DB) *Repository {
 }
 
 func (r *Repository) CreateAnnouncement(ctx context.Context, input CreateAnnouncementInput) (uint64, error) {
+	return r.CreateAnnouncementTx(ctx, nil, input)
+}
+
+func (r *Repository) CreateAnnouncementTx(ctx context.Context, tx *sql.Tx, input CreateAnnouncementInput) (uint64, error) {
 	query := `
 		INSERT INTO announcements (title, content, cover_url, status, publish_time, create_by)
 		VALUES (?, ?, ?, ?, CASE WHEN ? = 'PUBLISHED' THEN NOW() ELSE NULL END, ?)
 	`
-	result, err := r.db.ExecContext(ctx, query, input.Title, input.Content, input.CoverURL, input.Status, input.Status, input.AdminID)
+	execer := announcementExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, query, input.Title, input.Content, input.CoverURL, input.Status, input.Status, input.AdminID)
 	if err != nil {
 		return 0, fmt.Errorf("create announcement: %w", err)
 	}
@@ -71,12 +79,20 @@ func (r *Repository) ListAnnouncements(ctx context.Context, query AnnouncementQu
 }
 
 func (r *Repository) UpdateAnnouncement(ctx context.Context, input UpdateAnnouncementInput) error {
+	return r.UpdateAnnouncementTx(ctx, nil, input)
+}
+
+func (r *Repository) UpdateAnnouncementTx(ctx context.Context, tx *sql.Tx, input UpdateAnnouncementInput) error {
 	query := `
 		UPDATE announcements
 		SET title = ?, content = ?, cover_url = ?
 		WHERE id = ?
 	`
-	result, err := r.db.ExecContext(ctx, query, input.Title, input.Content, input.CoverURL, input.ID)
+	execer := announcementExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, query, input.Title, input.Content, input.CoverURL, input.ID)
 	if err != nil {
 		return fmt.Errorf("update announcement: %w", err)
 	}
@@ -84,25 +100,49 @@ func (r *Repository) UpdateAnnouncement(ctx context.Context, input UpdateAnnounc
 }
 
 func (r *Repository) UpdateAnnouncementStatus(ctx context.Context, id uint64, status string) error {
+	return r.UpdateAnnouncementStatusTx(ctx, nil, id, status)
+}
+
+func (r *Repository) UpdateAnnouncementStatusTx(ctx context.Context, tx *sql.Tx, id uint64, status string) error {
 	query := `
 		UPDATE announcements
 		SET status = ?, publish_time = CASE WHEN ? = 'PUBLISHED' THEN NOW() ELSE NULL END
 		WHERE id = ?
 	`
-	result, err := r.db.ExecContext(ctx, query, status, status, id)
+	execer := announcementExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, query, status, status, id)
 	if err != nil {
 		return fmt.Errorf("update announcement status: %w", err)
 	}
 	return r.checkAnnouncementRowsAffected(ctx, id, result)
 }
 
+type announcementExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
 func (r *Repository) CreateLog(ctx context.Context, input LogActionInput) (uint64, error) {
+	return createLog(ctx, r.db, input)
+}
+
+func (r *Repository) CreateLogTx(ctx context.Context, tx *sql.Tx, input LogActionInput) (uint64, error) {
+	return createLog(ctx, tx, input)
+}
+
+type logExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
+func createLog(ctx context.Context, execer logExecutor, input LogActionInput) (uint64, error) {
 	query := `
 		INSERT INTO admin_logs (
-			admin_id, operation_type, target_type, target_id, description, ip_address
-		) VALUES (?, ?, ?, ?, ?, ?)
+			admin_id, operation_type, target_type, target_id, description, ip_address, related_type, related_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	result, err := r.db.ExecContext(
+	result, err := execer.ExecContext(
 		ctx,
 		query,
 		input.AdminID,
@@ -111,6 +151,8 @@ func (r *Repository) CreateLog(ctx context.Context, input LogActionInput) (uint6
 		input.TargetID,
 		input.Description,
 		input.IPAddress,
+		input.RelatedType,
+		input.RelatedID,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("create admin log: %w", err)
@@ -210,7 +252,8 @@ func (r *Repository) ListLogs(ctx context.Context, query LogQuery) ([]AdminLog, 
 	}
 
 	listSQL := `
-		SELECT id, admin_id, operation_type, target_type, target_id, description, ip_address, create_time
+		SELECT id, admin_id, operation_type, target_type, target_id, description, ip_address,
+		       related_type, related_id, create_time
 		FROM admin_logs
 	` + whereSQL + ` ORDER BY create_time DESC LIMIT ? OFFSET ?`
 	args = append(args, query.PageSize, (query.Page-1)*query.PageSize)
@@ -226,6 +269,8 @@ func (r *Repository) ListLogs(ctx context.Context, query LogQuery) ([]AdminLog, 
 		var item AdminLog
 		var description sql.NullString
 		var ipAddress sql.NullString
+		var relatedType sql.NullString
+		var relatedID sql.NullInt64
 		if err := rows.Scan(
 			&item.ID,
 			&item.AdminID,
@@ -234,6 +279,8 @@ func (r *Repository) ListLogs(ctx context.Context, query LogQuery) ([]AdminLog, 
 			&item.TargetID,
 			&description,
 			&ipAddress,
+			&relatedType,
+			&relatedID,
 			&item.CreateTime,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan admin log: %w", err)
@@ -243,6 +290,13 @@ func (r *Repository) ListLogs(ctx context.Context, query LogQuery) ([]AdminLog, 
 		}
 		if ipAddress.Valid {
 			item.IPAddress = &ipAddress.String
+		}
+		if relatedType.Valid {
+			item.RelatedType = &relatedType.String
+		}
+		if relatedID.Valid {
+			value := uint64(relatedID.Int64)
+			item.RelatedID = &value
 		}
 		items = append(items, item)
 	}

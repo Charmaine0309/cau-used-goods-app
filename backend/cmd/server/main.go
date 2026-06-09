@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -49,28 +51,34 @@ func main() {
 
 	log.Printf("database connected: %s:%d/%s", cfg.Database.Host, cfg.Database.Port, cfg.Database.Name)
 
-	authRepo := auth.NewRepository(db.DB())
-	authService := auth.NewService(authRepo, cfg.JWT, cfg.Wechat)
-	authHandler := auth.NewHandler(authService)
-
-	userRepo := user.NewRepository(db.DB())
-	userService := user.NewService(userRepo)
-	userHandler := user.NewHandler(userService)
-
 	sensitiveRepo := sensitive.NewRepository(db.DB())
 	sensitiveService := sensitive.NewService(sensitiveRepo)
+
+	adminRepo := admin.NewRepository(db.DB())
+	adminService := admin.NewService(adminRepo)
+	adminHandler := admin.NewHandler(adminService)
+	sensitiveService.SetAdminLogger(adminService)
+	sensitiveHandler := sensitive.NewHandler(sensitiveService)
 
 	messageRepo := message.NewRepository(db.DB())
 	messageService := message.NewService(messageRepo)
 	messageHandler := message.NewHandler(messageService)
 
 	productRepo := product.NewRepository(db.DB())
-	productService := product.NewService(productRepo, sensitiveService)
+	productService := product.NewService(productRepo, sensitiveService, adminService)
 	productHandler := product.NewHandler(productService)
 
 	orderRepo := order.NewRepository(db.DB())
-	orderService := order.NewService(orderRepo, productService, messageService)
+	orderService := order.NewService(orderRepo, messageService, adminService)
 	orderHandler := order.NewHandler(orderService)
+
+	userRepo := user.NewRepository(db.DB())
+	userService := user.NewService(userRepo, productService, orderService, messageService, adminService)
+	userHandler := user.NewHandler(userService)
+
+	authRepo := auth.NewRepository(db.DB())
+	authService := auth.NewService(authRepo, cfg.JWT, cfg.Wechat, userService)
+	authHandler := auth.NewHandler(authService)
 
 	favoriteRepo := favorite.NewRepository(db.DB())
 	favoriteService := favorite.NewService(favoriteRepo)
@@ -81,18 +89,12 @@ func main() {
 	reviewHandler := review.NewHandler(reviewService)
 
 	reportRepo := report.NewRepository(db.DB())
-	reportService := report.NewService(reportRepo, db.DB(), sensitiveService, messageService)
+	reportService := report.NewService(reportRepo, sensitiveService, messageService, adminService)
 	reportHandler := report.NewHandler(reportService)
 
 	chatRepo := chat.NewRepository(db.DB())
 	chatService := chat.NewService(chatRepo)
 	chatHandler := chat.NewHandler(chatService)
-
-	adminRepo := admin.NewRepository(db.DB())
-	adminService := admin.NewService(adminRepo)
-	adminHandler := admin.NewHandler(adminService)
-	sensitiveService.SetAdminLogger(adminService)
-	sensitiveHandler := sensitive.NewHandler(sensitiveService)
 
 	appealRepo := appeal.NewRepository(db.DB())
 	appealService := appeal.NewService(appealRepo, adminService, messageService)
@@ -111,30 +113,59 @@ func main() {
 	r := gin.Default()
 	r.Static("/uploads", "./uploads")
 
-	authMiddleware := middleware.Auth(cfg.JWT.Secret)
+	authMiddleware := middleware.Auth(db.DB(), cfg.JWT.Secret)
+	readableMiddleware := middleware.ReadableAccount(db.DB())
+	normalMiddleware := middleware.NormalAccount(db.DB())
 	verifiedMiddleware := middleware.Verified(db.DB())
 	adminMiddleware := middleware.Admin(db.DB())
+	superAdminMiddleware := middleware.SuperAdmin(db.DB())
 
 	auth.RegisterRoutes(r, authHandler, authMiddleware, cfg.Server.Env == "dev")
-	user.RegisterRoutes(r, userHandler, authMiddleware)
-	user.RegisterAdminRoutes(r, userHandler, authMiddleware, adminMiddleware)
-	order.RegisterRoutes(r, orderHandler, authMiddleware, verifiedMiddleware, adminMiddleware)
+	user.RegisterRoutes(r, userHandler, authMiddleware, readableMiddleware, normalMiddleware)
+	user.RegisterAdminRoutes(r, userHandler, authMiddleware, adminMiddleware, superAdminMiddleware)
+	order.RegisterRoutes(r, orderHandler, authMiddleware, readableMiddleware, verifiedMiddleware, adminMiddleware)
 	favorite.RegisterRoutes(r, favoriteHandler, authMiddleware, verifiedMiddleware)
 	review.RegisterRoutes(r, reviewHandler, authMiddleware, verifiedMiddleware)
 	report.RegisterRoutes(r, reportHandler, authMiddleware, verifiedMiddleware, adminMiddleware)
-	message.RegisterRoutes(r, messageHandler, authMiddleware)
-	chat.RegisterRoutes(r, chatHandler, authMiddleware, verifiedMiddleware)
-	appeal.RegisterRoutes(r, appealHandler, authMiddleware, verifiedMiddleware, adminMiddleware)
+	message.RegisterRoutes(r, messageHandler, authMiddleware, readableMiddleware)
+	chat.RegisterRoutes(r, chatHandler, authMiddleware, readableMiddleware, verifiedMiddleware)
+	appeal.RegisterRoutes(r, appealHandler, authMiddleware, readableMiddleware, verifiedMiddleware, adminMiddleware)
 	admin.RegisterRoutes(r, adminHandler, authMiddleware, adminMiddleware)
 	sensitive.RegisterAdminRoutes(r, sensitiveHandler, authMiddleware, adminMiddleware)
 
-	product.RegisterRoutes(r, productHandler, authMiddleware, adminMiddleware)
+	product.RegisterRoutes(r, productHandler, authMiddleware, verifiedMiddleware, adminMiddleware)
 	upload.RegisterRoutes(r, uploadHandler, authMiddleware)
 	ai.RegisterRoutes(r, aiHandler, authMiddleware)
 	stats.RegisterRoutes(r, statsHandler, authMiddleware, adminMiddleware)
+	startOrderCleanupJob(context.Background(), orderService, time.Minute)
+
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	log.Printf("server listening on %s", addr)
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("run server failed: %v", err)
 	}
+}
+
+func startOrderCleanupJob(ctx context.Context, orderService *order.Service, interval time.Duration) {
+	if interval <= 0 {
+		return
+	}
+	ticker := time.NewTicker(interval)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				count, err := orderService.CancelExpiredOrders(ctx)
+				if err != nil {
+					log.Printf("cleanup expired orders failed: %v", err)
+				}
+				if count > 0 {
+					log.Printf("cleanup expired orders: canceled %d order(s)", count)
+				}
+			}
+		}
+	}()
 }

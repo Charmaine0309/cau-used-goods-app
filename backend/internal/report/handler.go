@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -129,8 +130,9 @@ func (h *Handler) ListAll(c *gin.Context) {
 }
 
 type handleReportRequest struct {
-	Status       string  `json:"status" binding:"required,oneof=APPROVED REJECTED"`
-	HandleResult *string `json:"handleResult"`
+	Status        string  `json:"status" binding:"required,oneof=APPROVED REJECTED"`
+	HandleResult  *string `json:"handleResult"`
+	AccountStatus *string `json:"accountStatus"`
 }
 
 type closeReportRequest struct {
@@ -155,12 +157,18 @@ func (h *Handler) Handle(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
 		return
 	}
+	if req.AccountStatus != nil && strings.TrimSpace(*req.AccountStatus) != "" {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "accountStatus is deprecated; use the user status API with relatedType and relatedId")
+		return
+	}
 
+	ipAddress := c.ClientIP()
 	report, err := h.service.Handle(c.Request.Context(), HandleReportInput{
 		ReportID:     reportID,
 		HandlerID:    adminID,
 		Status:       req.Status,
 		HandleResult: req.HandleResult,
+		IPAddress:    &ipAddress,
 	})
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
@@ -220,9 +228,11 @@ func (h *Handler) MarkProcessing(c *gin.Context) {
 		return
 	}
 
+	ipAddress := c.ClientIP()
 	report, err := h.service.MarkProcessing(c.Request.Context(), MarkReportProcessingInput{
 		ReportID:  reportID,
 		HandlerID: adminID,
+		IPAddress: &ipAddress,
 	})
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())

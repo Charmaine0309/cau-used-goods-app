@@ -110,11 +110,19 @@ func (r *Repository) ListWords(ctx context.Context, query WordQuery) ([]Sensitiv
 }
 
 func (r *Repository) CreateWord(ctx context.Context, input CreateWordInput) (uint64, error) {
+	return r.CreateWordTx(ctx, nil, input)
+}
+
+func (r *Repository) CreateWordTx(ctx context.Context, tx *sql.Tx, input CreateWordInput) (uint64, error) {
 	query := `
 		INSERT INTO sensitive_words (word, word_type, status, create_by)
 		VALUES (?, ?, ?, ?)
 	`
-	result, err := r.db.ExecContext(ctx, query, input.Word, input.WordType, input.Status, input.CreateBy)
+	execer := wordExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, query, input.Word, input.WordType, input.Status, input.CreateBy)
 	if err != nil {
 		return 0, fmt.Errorf("create sensitive word: %w", err)
 	}
@@ -127,12 +135,20 @@ func (r *Repository) CreateWord(ctx context.Context, input CreateWordInput) (uin
 }
 
 func (r *Repository) UpdateWord(ctx context.Context, input UpdateWordInput) error {
+	return r.UpdateWordTx(ctx, nil, input)
+}
+
+func (r *Repository) UpdateWordTx(ctx context.Context, tx *sql.Tx, input UpdateWordInput) error {
 	query := `
 		UPDATE sensitive_words
 		SET word = ?, word_type = ?, status = ?
 		WHERE id = ?
 	`
-	result, err := r.db.ExecContext(ctx, query, input.Word, input.WordType, input.Status, input.ID)
+	execer := wordExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, query, input.Word, input.WordType, input.Status, input.ID)
 	if err != nil {
 		return fmt.Errorf("update sensitive word: %w", err)
 	}
@@ -140,12 +156,24 @@ func (r *Repository) UpdateWord(ctx context.Context, input UpdateWordInput) erro
 }
 
 func (r *Repository) DisableWord(ctx context.Context, id uint64) error {
+	return r.DisableWordTx(ctx, nil, id)
+}
+
+func (r *Repository) DisableWordTx(ctx context.Context, tx *sql.Tx, id uint64) error {
 	query := `UPDATE sensitive_words SET status = 'DISABLED' WHERE id = ?`
-	result, err := r.db.ExecContext(ctx, query, id)
+	execer := wordExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("disable sensitive word: %w", err)
 	}
 	return checkRowsAffected(result)
+}
+
+type wordExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
 }
 
 func buildWordWhere(query WordQuery) (string, []interface{}) {

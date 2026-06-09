@@ -2,11 +2,13 @@ package sensitive
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 
 	"cau-used-goods-app/backend/internal/admin"
+	"cau-used-goods-app/backend/internal/db"
 )
 
 const (
@@ -104,13 +106,17 @@ func (s *Service) CreateWord(ctx context.Context, adminID uint64, input CreateWo
 		return 0, err
 	}
 
-	id, err := s.repo.CreateWord(ctx, input)
-	if err != nil {
-		return 0, err
-	}
-
 	description := fmt.Sprintf("create sensitive word: %s", input.Word)
-	if err := s.logAdminAction(ctx, adminID, admin.OperationCreateWord, id, description, ipAddress); err != nil {
+	var id uint64
+	err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		id, err = s.repo.CreateWordTx(ctx, tx, input)
+		if err != nil {
+			return err
+		}
+		return s.logAdminActionTx(ctx, tx, adminID, admin.OperationCreateWord, id, description, ipAddress)
+	})
+	if err != nil {
 		return 0, err
 	}
 	return id, nil
@@ -125,12 +131,13 @@ func (s *Service) UpdateWord(ctx context.Context, adminID uint64, input UpdateWo
 	if err := validateUpdateWordInput(adminID, input); err != nil {
 		return err
 	}
-	if err := s.repo.UpdateWord(ctx, input); err != nil {
-		return err
-	}
-
 	description := fmt.Sprintf("update sensitive word: %s", input.Word)
-	return s.logAdminAction(ctx, adminID, admin.OperationUpdateWord, input.ID, description, ipAddress)
+	return db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.UpdateWordTx(ctx, tx, input); err != nil {
+			return err
+		}
+		return s.logAdminActionTx(ctx, tx, adminID, admin.OperationUpdateWord, input.ID, description, ipAddress)
+	})
 }
 
 func (s *Service) DeleteWord(ctx context.Context, adminID, id uint64, ipAddress *string) error {
@@ -138,19 +145,20 @@ func (s *Service) DeleteWord(ctx context.Context, adminID, id uint64, ipAddress 
 	if adminID == 0 || id == 0 {
 		return ErrInvalidSensitiveWordInput
 	}
-	if err := s.repo.DisableWord(ctx, id); err != nil {
-		return err
-	}
-
 	description := "disable sensitive word by delete operation"
-	return s.logAdminAction(ctx, adminID, admin.OperationDeleteWord, id, description, ipAddress)
+	return db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.DisableWordTx(ctx, tx, id); err != nil {
+			return err
+		}
+		return s.logAdminActionTx(ctx, tx, adminID, admin.OperationDeleteWord, id, description, ipAddress)
+	})
 }
 
-func (s *Service) logAdminAction(ctx context.Context, adminID uint64, operationType string, targetID uint64, description string, ipAddress *string) error {
+func (s *Service) logAdminActionTx(ctx context.Context, tx *sql.Tx, adminID uint64, operationType string, targetID uint64, description string, ipAddress *string) error {
 	if s.adminLogger == nil {
-		return nil
+		return fmt.Errorf("admin logger is not configured")
 	}
-	_, err := s.adminLogger.LogAction(ctx, admin.LogActionInput{
+	_, err := s.adminLogger.LogActionTx(ctx, tx, admin.LogActionInput{
 		AdminID:       adminID,
 		OperationType: operationType,
 		TargetType:    admin.TargetTypeWord,

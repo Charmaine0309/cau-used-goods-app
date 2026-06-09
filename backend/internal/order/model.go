@@ -28,3 +28,12 @@ type OrderDetail struct {
 	SellerNickname *string `json:"sellerNickname,omitempty"`
 	ProductImage   *string `json:"productImage,omitempty"`
 }
+
+type AccountStatusClosedOrder struct {
+	ID                   uint64
+	BuyerID              uint64
+	SellerID             uint64
+	ProductID            uint64
+	ProductTitleSnapshot string
+	ResponsibleParty     string
+}
