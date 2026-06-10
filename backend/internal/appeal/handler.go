@@ -38,10 +38,6 @@ type closeAppealRequest struct {
 	CloseReason string `json:"closeReason"`
 }
 
-type closeAppealRequest struct {
-	CloseReason string `json:"closeReason"`
-}
-
 func (h *Handler) Create(c *gin.Context) {
 	userID, ok := middleware.CurrentUserID(c)
 	if !ok {
