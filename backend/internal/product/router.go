@@ -20,6 +20,7 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMid
 	adminProducts := r.Group("/admin/products")
 	adminProducts.Use(authMiddleware, adminMiddleware)
 	{
+		adminProducts.GET("", handler.AdminListProducts)
 		adminProducts.PUT("/:id/status", handler.AdminUpdateProductStatus)
 	}
 

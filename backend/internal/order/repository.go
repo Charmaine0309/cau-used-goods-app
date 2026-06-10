@@ -361,6 +361,67 @@ func (r *Repository) ListBySeller(ctx context.Context, sellerID uint64, status s
 	return orders, total, nil
 }
 
+func (r *Repository) ListAll(ctx context.Context, status string, page, pageSize int) ([]OrderDetail, int, error) {
+	where := "1 = 1"
+	args := []interface{}{}
+	if status != "" {
+		where += " AND o.status = ?"
+		args = append(args, status)
+	}
+
+	var total int
+	countQuery := "SELECT COUNT(*) FROM orders o WHERE " + where
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count orders: %w", err)
+	}
+
+	query := `
+		SELECT o.id, o.order_no, o.product_id, o.buyer_id, o.seller_id, o.product_title_snapshot, o.product_price_snapshot, o.status, o.remark, o.meet_time, o.meet_location, o.cancel_reason, o.cancel_by, o.expire_time, o.confirm_time, o.finish_time, o.close_time, o.create_time, o.update_time,
+			ub.nickname, us.nickname, pi.image_url
+		FROM orders o
+		LEFT JOIN users ub ON ub.id = o.buyer_id
+		LEFT JOIN users us ON us.id = o.seller_id
+		LEFT JOIN product_images pi ON pi.product_id = o.product_id AND pi.sort_order = 0
+		WHERE ` + where + `
+		ORDER BY o.create_time DESC
+		LIMIT ? OFFSET ?
+	`
+	args = append(args, pageSize, (page-1)*pageSize)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list orders: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []OrderDetail
+	for rows.Next() {
+		var od OrderDetail
+		var buyerNick, sellerNick, productImg sql.NullString
+		err := rows.Scan(
+			&od.ID, &od.OrderNo, &od.ProductID, &od.BuyerID, &od.SellerID, &od.ProductTitleSnapshot, &od.ProductPriceSnapshot, &od.Status, &od.Remark, &od.MeetTime, &od.MeetLocation, &od.CancelReason, &od.CancelBy, &od.ExpireTime, &od.ConfirmTime, &od.FinishTime, &od.CloseTime, &od.CreateTime, &od.UpdateTime,
+			&buyerNick, &sellerNick, &productImg,
+		)
+		if err != nil {
+			return nil, 0, fmt.Errorf("scan order: %w", err)
+		}
+		if buyerNick.Valid {
+			od.BuyerNickname = &buyerNick.String
+		}
+		if sellerNick.Valid {
+			od.SellerNickname = &sellerNick.String
+		}
+		if productImg.Valid {
+			od.ProductImage = &productImg.String
+		}
+		orders = append(orders, od)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate orders: %w", err)
+	}
+	return orders, total, nil
+}
+
 func (r *Repository) HasActiveOrderByBuyer(ctx context.Context, buyerID, productID uint64) (bool, error) {
 	query := `
 		SELECT COUNT(*) FROM orders

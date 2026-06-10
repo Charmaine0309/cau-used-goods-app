@@ -525,6 +525,16 @@ func (s *Service) ListBySeller(ctx context.Context, sellerID uint64, status stri
 	return s.repo.ListBySeller(ctx, sellerID, status, page, pageSize)
 }
 
+func (s *Service) ListAll(ctx context.Context, status string, page, pageSize int) ([]OrderDetail, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	return s.repo.ListAll(ctx, status, page, pageSize)
+}
+
 func (s *Service) CountBlockingOrdersTx(ctx context.Context, tx *sql.Tx, userID uint64) (int, int, int, int, error) {
 	return s.repo.CountBlockingOrdersTx(ctx, tx, userID)
 }

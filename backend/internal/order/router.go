@@ -19,6 +19,7 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, readableMid
 	adminGroup := r.Group("/admin/orders")
 	adminGroup.Use(authMiddleware, adminMiddleware)
 	{
+		adminGroup.GET("", handler.AdminListOrders)
 		adminGroup.POST("/:id/exception-close", handler.AdminExceptionClose)
 		adminGroup.PUT("/:id/status", handler.AdminUpdateStatus)
 	}

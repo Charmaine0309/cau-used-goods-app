@@ -58,8 +58,7 @@ export const getAdminUsers = () => {
 
 export const getAdminProducts = () => {
   return request({
-    url: '/products?status=ALL&page=1&pageSize=50&sort=newest',
-    auth: false
+    url: '/admin/products?page=1&pageSize=50&sort=newest'
   })
 }
 

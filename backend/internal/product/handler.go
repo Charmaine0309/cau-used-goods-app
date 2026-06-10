@@ -273,6 +273,66 @@ func (h *Handler) ListProducts(c *gin.Context) {
 	response.Success(c, result)
 }
 
+func (h *Handler) AdminListProducts(c *gin.Context) {
+	keyword := c.Query("keyword")
+	conditionLevel := c.Query("conditionLevel")
+	status := c.Query("status")
+	sort := c.DefaultQuery("sort", "newest")
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
+
+	var categoryID uint64
+	if v := c.Query("categoryId"); v != "" {
+		parsed, _ := strconv.ParseUint(v, 10, 64)
+		categoryID = parsed
+	}
+
+	var minPrice *float64
+	if v := c.Query("minPrice"); v != "" {
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err == nil {
+			minPrice = &parsed
+		}
+	}
+
+	var maxPrice *float64
+	if v := c.Query("maxPrice"); v != "" {
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err == nil {
+			maxPrice = &parsed
+		}
+	}
+
+	if status != "" && !isValidProductStatus(status) {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid status")
+		return
+	}
+
+	if !isValidProductSort(sort) {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid sort")
+		return
+	}
+
+	result, err := h.service.ListProducts(c.Request.Context(), ProductListInput{
+		Keyword:        keyword,
+		CategoryID:     categoryID,
+		ConditionLevel: conditionLevel,
+		Status:         status,
+		MinPrice:       minPrice,
+		MaxPrice:       maxPrice,
+		Sort:           sort,
+		Page:           page,
+		PageSize:       pageSize,
+	})
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
+		return
+	}
+
+	response.Success(c, result)
+}
+
 func (h *Handler) GetProductByID(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {

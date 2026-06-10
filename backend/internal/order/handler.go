@@ -247,6 +247,25 @@ func (h *Handler) ListMyOrders(c *gin.Context) {
 	})
 }
 
+func (h *Handler) AdminListOrders(c *gin.Context) {
+	status := c.DefaultQuery("status", "")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+
+	orders, total, err := h.service.ListAll(c.Request.Context(), status, page, pageSize)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{
+		"items":    orders,
+		"total":    total,
+		"page":     page,
+		"pageSize": pageSize,
+	})
+}
+
 func (h *Handler) AdminUpdateStatus(c *gin.Context) {
 	adminID, ok := middleware.CurrentUserID(c)
 	if !ok {
