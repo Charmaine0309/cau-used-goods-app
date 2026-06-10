@@ -4,25 +4,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMiddleware, adminMiddleware gin.HandlerFunc) {
+func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, readableMiddleware, verifiedMiddleware, adminMiddleware gin.HandlerFunc) {
 	group := r.Group("/orders")
-	group.Use(authMiddleware, verifiedMiddleware)
+	group.Use(authMiddleware, readableMiddleware)
 	{
-		group.POST("", handler.Create)
+		group.POST("", verifiedMiddleware, handler.Create)
 		group.GET("", handler.ListMyOrders)
 		group.GET("/:id", handler.GetByID)
-		group.POST("/:id/confirm", handler.Confirm)
-		group.POST("/:id/cancel", handler.Cancel)
-		group.POST("/:id/complete", handler.Complete)
-		group.POST("/:id/exception-close", handler.ExceptionClose)
+		group.POST("/:id/confirm", verifiedMiddleware, handler.Confirm)
+		group.POST("/:id/cancel", verifiedMiddleware, handler.Cancel)
+		group.POST("/:id/complete", verifiedMiddleware, handler.Complete)
 	}
 
-	// 管理员清理超时订单
 	adminGroup := r.Group("/admin/orders")
 	adminGroup.Use(authMiddleware, adminMiddleware)
 	{
-		adminGroup.GET("", handler.AdminList)
-		adminGroup.POST("/cleanup-expired", handler.CancelExpired)
+		adminGroup.POST("/:id/exception-close", handler.AdminExceptionClose)
 		adminGroup.PUT("/:id/status", handler.AdminUpdateStatus)
 	}
 }

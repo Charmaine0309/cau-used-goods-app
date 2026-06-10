@@ -2,9 +2,12 @@ package admin
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
+
+	"cau-used-goods-app/backend/internal/db"
 )
 
 var ErrInvalidAdminLogInput = errors.New("invalid admin log input")
@@ -32,19 +35,23 @@ func (s *Service) CreateAnnouncement(ctx context.Context, input CreateAnnounceme
 		return 0, err
 	}
 
-	id, err := s.repo.CreateAnnouncement(ctx, input)
-	if err != nil {
-		return 0, err
-	}
-
 	description := fmt.Sprintf("create announcement: %s", input.Title)
-	_, err = s.LogAction(ctx, LogActionInput{
-		AdminID:       input.AdminID,
-		OperationType: OperationCreateNotice,
-		TargetType:    TargetTypeNotice,
-		TargetID:      id,
-		Description:   &description,
-		IPAddress:     input.IPAddress,
+	var id uint64
+	err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		id, err = s.repo.CreateAnnouncementTx(ctx, tx, input)
+		if err != nil {
+			return err
+		}
+		_, err = s.LogActionTx(ctx, tx, LogActionInput{
+			AdminID:       input.AdminID,
+			OperationType: OperationCreateNotice,
+			TargetType:    TargetTypeNotice,
+			TargetID:      id,
+			Description:   &description,
+			IPAddress:     input.IPAddress,
+		})
+		return err
 	})
 	if err != nil {
 		return 0, err
@@ -76,20 +83,21 @@ func (s *Service) UpdateAnnouncement(ctx context.Context, input UpdateAnnounceme
 	if err := validateUpdateAnnouncementInput(input); err != nil {
 		return err
 	}
-	if err := s.repo.UpdateAnnouncement(ctx, input); err != nil {
-		return err
-	}
-
 	description := fmt.Sprintf("update announcement: %s", input.Title)
-	_, err := s.LogAction(ctx, LogActionInput{
-		AdminID:       input.AdminID,
-		OperationType: OperationUpdateNotice,
-		TargetType:    TargetTypeNotice,
-		TargetID:      input.ID,
-		Description:   &description,
-		IPAddress:     input.IPAddress,
+	return db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.UpdateAnnouncementTx(ctx, tx, input); err != nil {
+			return err
+		}
+		_, err := s.LogActionTx(ctx, tx, LogActionInput{
+			AdminID:       input.AdminID,
+			OperationType: OperationUpdateNotice,
+			TargetType:    TargetTypeNotice,
+			TargetID:      input.ID,
+			Description:   &description,
+			IPAddress:     input.IPAddress,
+		})
+		return err
 	})
-	return err
 }
 
 func (s *Service) UpdateAnnouncementStatus(ctx context.Context, input UpdateAnnouncementStatusInput) error {
@@ -99,20 +107,21 @@ func (s *Service) UpdateAnnouncementStatus(ctx context.Context, input UpdateAnno
 	if err := validateUpdateAnnouncementStatusInput(input); err != nil {
 		return err
 	}
-	if err := s.repo.UpdateAnnouncementStatus(ctx, input.ID, input.Status); err != nil {
-		return err
-	}
-
 	description := fmt.Sprintf("update announcement status: %s", input.Status)
-	_, err := s.LogAction(ctx, LogActionInput{
-		AdminID:       input.AdminID,
-		OperationType: OperationStatusNotice,
-		TargetType:    TargetTypeNotice,
-		TargetID:      input.ID,
-		Description:   &description,
-		IPAddress:     input.IPAddress,
+	return db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.UpdateAnnouncementStatusTx(ctx, tx, input.ID, input.Status); err != nil {
+			return err
+		}
+		_, err := s.LogActionTx(ctx, tx, LogActionInput{
+			AdminID:       input.AdminID,
+			OperationType: OperationStatusNotice,
+			TargetType:    TargetTypeNotice,
+			TargetID:      input.ID,
+			Description:   &description,
+			IPAddress:     input.IPAddress,
+		})
+		return err
 	})
-	return err
 }
 
 func (s *Service) DeleteAnnouncement(ctx context.Context, adminID, id uint64, ipAddress *string) error {
@@ -120,25 +129,45 @@ func (s *Service) DeleteAnnouncement(ctx context.Context, adminID, id uint64, ip
 	if adminID == 0 || id == 0 {
 		return ErrInvalidAnnouncementInput
 	}
-	if err := s.repo.UpdateAnnouncementStatus(ctx, id, AnnouncementStatusOffline); err != nil {
-		return err
-	}
-
 	description := "offline announcement by delete operation"
-	_, err := s.LogAction(ctx, LogActionInput{
-		AdminID:       adminID,
-		OperationType: OperationDeleteNotice,
-		TargetType:    TargetTypeNotice,
-		TargetID:      id,
-		Description:   &description,
-		IPAddress:     ipAddress,
+	return db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.UpdateAnnouncementStatusTx(ctx, tx, id, AnnouncementStatusOffline); err != nil {
+			return err
+		}
+		_, err := s.LogActionTx(ctx, tx, LogActionInput{
+			AdminID:       adminID,
+			OperationType: OperationDeleteNotice,
+			TargetType:    TargetTypeNotice,
+			TargetID:      id,
+			Description:   &description,
+			IPAddress:     ipAddress,
+		})
+		return err
 	})
-	return err
 }
 
 func (s *Service) LogAction(ctx context.Context, input LogActionInput) (uint64, error) {
+	input, err := normalizeLogActionInput(input)
+	if err != nil {
+		return 0, err
+	}
+	return s.repo.CreateLog(ctx, input)
+}
+
+func (s *Service) LogActionTx(ctx context.Context, tx *sql.Tx, input LogActionInput) (uint64, error) {
+	if tx == nil {
+		return 0, ErrInvalidAdminLogInput
+	}
+	input, err := normalizeLogActionInput(input)
+	if err != nil {
+		return 0, err
+	}
+	return s.repo.CreateLogTx(ctx, tx, input)
+}
+
+func normalizeLogActionInput(input LogActionInput) (LogActionInput, error) {
 	input.OperationType = strings.TrimSpace(input.OperationType)
-	input.TargetType = strings.TrimSpace(input.TargetType)
+	input.TargetType = strings.ToUpper(strings.TrimSpace(input.TargetType))
 	if input.Description != nil {
 		value := strings.TrimSpace(*input.Description)
 		input.Description = &value
@@ -147,11 +176,15 @@ func (s *Service) LogAction(ctx context.Context, input LogActionInput) (uint64, 
 		value := strings.TrimSpace(*input.IPAddress)
 		input.IPAddress = &value
 	}
+	if input.RelatedType != nil {
+		value := strings.ToUpper(strings.TrimSpace(*input.RelatedType))
+		input.RelatedType = &value
+	}
 
 	if err := validateLogActionInput(input); err != nil {
-		return 0, err
+		return input, err
 	}
-	return s.repo.CreateLog(ctx, input)
+	return input, nil
 }
 
 func validateCreateAnnouncementInput(input CreateAnnouncementInput) error {
@@ -217,7 +250,7 @@ func trimOptionalString(value **string) {
 	*value = &trimmed
 }
 
-func (s *Service) ListLogs(ctx context.Context, query LogQuery) ([]AdminLog, int, error) {
+func (s *Service) ListLogs(ctx context.Context, query LogQuery, includeIP bool) ([]AdminLog, int, error) {
 	query.OperationType = strings.TrimSpace(query.OperationType)
 	query.TargetType = strings.TrimSpace(query.TargetType)
 	query.StartTime = strings.TrimSpace(query.StartTime)
@@ -230,7 +263,16 @@ func (s *Service) ListLogs(ctx context.Context, query LogQuery) ([]AdminLog, int
 		query.PageSize = 20
 	}
 
-	return s.repo.ListLogs(ctx, query)
+	items, total, err := s.repo.ListLogs(ctx, query)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !includeIP {
+		for i := range items {
+			items[i].IPAddress = nil
+		}
+	}
+	return items, total, nil
 }
 
 func validateLogActionInput(input LogActionInput) error {
@@ -243,6 +285,9 @@ func validateLogActionInput(input LogActionInput) error {
 	if input.TargetType == "" || len(input.TargetType) > 30 {
 		return ErrInvalidAdminLogInput
 	}
+	if !isValidLogTargetType(input.TargetType) {
+		return ErrInvalidAdminLogInput
+	}
 	if input.TargetID == 0 {
 		return ErrInvalidAdminLogInput
 	}
@@ -252,5 +297,27 @@ func validateLogActionInput(input LogActionInput) error {
 	if input.IPAddress != nil && len(*input.IPAddress) > 50 {
 		return ErrInvalidAdminLogInput
 	}
+	if (input.RelatedType == nil) != (input.RelatedID == nil) {
+		return ErrInvalidAdminLogInput
+	}
+	if input.RelatedType != nil && *input.RelatedType != TargetTypeReport && *input.RelatedType != TargetTypeAppeal {
+		return ErrInvalidAdminLogInput
+	}
 	return nil
+}
+
+func isValidLogTargetType(targetType string) bool {
+	switch targetType {
+	case TargetTypeUser,
+		TargetTypeProduct,
+		TargetTypeOrder,
+		TargetTypeReport,
+		TargetTypeNotice,
+		TargetTypeWord,
+		TargetTypeAppeal,
+		TargetTypeCategory:
+		return true
+	default:
+		return false
+	}
 }

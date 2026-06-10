@@ -2,10 +2,12 @@ package appeal
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
 	"cau-used-goods-app/backend/internal/admin"
+	"cau-used-goods-app/backend/internal/db"
 	"cau-used-goods-app/backend/internal/message"
 )
 
@@ -95,28 +97,28 @@ func (s *Service) Handle(ctx context.Context, input HandleAppealInput) (*Appeal,
 		return nil, err
 	}
 
-	item, err := s.repo.Handle(ctx, input)
+	description := fmt.Sprintf("handle appeal #%d: %s", input.AppealID, input.Status)
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.HandleTx(ctx, tx, input); err != nil {
+			return err
+		}
+		return s.logAdminActionTx(ctx, tx, input.AdminID, input.AppealID, appealOperationType(input.Status), description, input.IPAddress)
+	}); err != nil {
+		return nil, err
+	}
+	item, err := s.repo.GetByID(ctx, input.AppealID)
 	if err != nil {
 		return nil, err
 	}
-
-	description := fmt.Sprintf("申诉#%d已%s", item.ID, appealStatusLabel(input.Status))
-	if _, err := s.admin.LogAction(ctx, admin.LogActionInput{
-		AdminID:       input.AdminID,
-		OperationType: admin.OperationHandleAppeal,
-		TargetType:    admin.TargetTypeAppeal,
-		TargetID:      item.ID,
-		Description:   &description,
-		IPAddress:     input.IPAddress,
-	}); err != nil {
-		return nil, err
+	if item == nil {
+		return nil, fmt.Errorf("appeal not found")
 	}
 
 	title := "申诉处理结果"
 	content := limitRunes(fmt.Sprintf("你的申诉已处理，结果：%s。处理说明：%s", input.Status, input.HandleResult), 500)
 	relatedType := message.RelatedTypeAppeal
 	relatedID := item.ID
-	if _, err := s.messages.Create(ctx, message.CreateMessageInput{
+	_, _ = s.messages.Create(ctx, message.CreateMessageInput{
 		ReceiverID:  item.AppellantID,
 		SenderID:    &input.AdminID,
 		MessageType: message.MessageTypeSystemNotice,
@@ -124,9 +126,7 @@ func (s *Service) Handle(ctx context.Context, input HandleAppealInput) (*Appeal,
 		Content:     content,
 		RelatedType: &relatedType,
 		RelatedID:   &relatedID,
-	}); err != nil {
-		return nil, err
-	}
+	})
 
 	return item, nil
 }
@@ -172,34 +172,42 @@ func (s *Service) MarkProcessing(ctx context.Context, appealID, adminID uint64, 
 		ipAddress = &trimmed
 	}
 
-	item, err := s.repo.MarkProcessing(ctx, appealID, adminID)
-	if err != nil {
-		return nil, err
-	}
-
-	description := fmt.Sprintf("申诉#%d标记为处理中", item.ID)
-	if _, err := s.admin.LogAction(ctx, admin.LogActionInput{
-		AdminID:       adminID,
-		OperationType: admin.OperationHandleAppeal,
-		TargetType:    admin.TargetTypeAppeal,
-		TargetID:      item.ID,
-		Description:   &description,
-		IPAddress:     ipAddress,
+	description := fmt.Sprintf("mark appeal #%d as PROCESSING", appealID)
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.MarkProcessingTx(ctx, tx, appealID, adminID); err != nil {
+			return err
+		}
+		return s.logAdminActionTx(ctx, tx, adminID, appealID, admin.OperationMarkAppealProcessing, description, ipAddress)
 	}); err != nil {
 		return nil, err
 	}
-
-	return item, nil
+	return s.repo.GetByID(ctx, appealID)
 }
 
-func appealStatusLabel(status string) string {
-	if status == StatusApproved {
-		return "通过"
+func appealOperationType(status string) string {
+	switch status {
+	case StatusApproved:
+		return admin.OperationApproveAppeal
+	case StatusRejected:
+		return admin.OperationRejectAppeal
+	default:
+		return admin.OperationMarkAppealProcessing
 	}
-	if status == StatusRejected {
-		return "驳回"
+}
+
+func (s *Service) logAdminActionTx(ctx context.Context, tx *sql.Tx, adminID, appealID uint64, operationType string, description string, ipAddress *string) error {
+	if s.admin == nil {
+		return fmt.Errorf("admin logger is not configured")
 	}
-	return status
+	_, err := s.admin.LogActionTx(ctx, tx, admin.LogActionInput{
+		AdminID:       adminID,
+		OperationType: operationType,
+		TargetType:    admin.TargetTypeAppeal,
+		TargetID:      appealID,
+		Description:   &description,
+		IPAddress:     ipAddress,
+	})
+	return err
 }
 
 func validateCreateInput(input CreateAppealInput) error {

@@ -40,6 +40,22 @@ type reviewStudentVerificationRequest struct {
 	Description string `json:"description"`
 }
 
+type updateAccountStatusRequest struct {
+	AccountStatus string `json:"accountStatus" binding:"required"`
+	Reason        string `json:"reason" binding:"required"`
+	RelatedType   string `json:"relatedType"`
+	RelatedID     uint64 `json:"relatedId"`
+}
+
+type updateRoleRequest struct {
+	Role   string `json:"role" binding:"required"`
+	Reason string `json:"reason" binding:"required"`
+}
+
+type cancelAccountRequest struct {
+	Confirm bool `json:"confirm"`
+}
+
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
@@ -57,6 +73,51 @@ func (h *Handler) Me(c *gin.Context) {
 		return
 	}
 	response.Success(c, user)
+}
+
+func (h *Handler) PublicProfile(c *gin.Context) {
+	userID, ok := parseUserIDParam(c)
+	if !ok {
+		return
+	}
+	item, err := h.service.PublicProfile(c.Request.Context(), userID)
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, item)
+}
+
+func (h *Handler) Restriction(c *gin.Context) {
+	userID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	item, err := h.service.Restriction(c.Request.Context(), userID)
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, item)
+}
+
+func (h *Handler) CancelAccount(c *gin.Context) {
+	userID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	var req cancelAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+	if err := h.service.CancelAccount(c.Request.Context(), userID, req.Confirm); err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"accountStatus": "CANCELED"})
 }
 
 func (h *Handler) UpdateProfile(c *gin.Context) {
@@ -297,6 +358,181 @@ func (h *Handler) ListStudentVerifications(c *gin.Context) {
 	response.Success(c, gin.H{"items": items})
 }
 
+func (h *Handler) ListAdminUsers(c *gin.Context) {
+	page, pageSize := parsePage(c)
+	role, _ := middleware.CurrentRole(c)
+	result, err := h.service.ListAdminUsers(c.Request.Context(), AdminUserQuery{
+		Keyword:       c.Query("keyword"),
+		AuthStatus:    c.Query("authStatus"),
+		AccountStatus: c.Query("accountStatus"),
+		Role:          c.Query("role"),
+		Page:          page,
+		PageSize:      pageSize,
+	}, role == roleSuperAdmin)
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *Handler) AdminUserDetail(c *gin.Context) {
+	userID, ok := parseUserIDParam(c)
+	if !ok {
+		return
+	}
+	role, _ := middleware.CurrentRole(c)
+	result, err := h.service.AdminUserDetail(c.Request.Context(), userID, role == roleSuperAdmin, role == roleSuperAdmin)
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *Handler) UpdateAccountStatus(c *gin.Context) {
+	adminID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	userID, ok := parseUserIDParam(c)
+	if !ok {
+		return
+	}
+	var req updateAccountStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+	user, err := h.service.UpdateAccountStatus(c.Request.Context(), adminID, UpdateAccountStatusInput{
+		UserID:        userID,
+		AccountStatus: req.AccountStatus,
+		Reason:        req.Reason,
+		IPAddress:     c.ClientIP(),
+		RelatedType:   req.RelatedType,
+		RelatedID:     req.RelatedID,
+	})
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, user)
+}
+
+func (h *Handler) UpdateRole(c *gin.Context) {
+	adminID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	userID, ok := parseUserIDParam(c)
+	if !ok {
+		return
+	}
+	var req updateRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+	user, err := h.service.UpdateRole(c.Request.Context(), adminID, UpdateRoleInput{
+		UserID:    userID,
+		Role:      req.Role,
+		Reason:    req.Reason,
+		IPAddress: c.ClientIP(),
+	})
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, user)
+}
+
+func (h *Handler) ListUserProducts(c *gin.Context) {
+	userID, ok := parseUserIDParam(c)
+	if !ok {
+		return
+	}
+	page, pageSize := parsePage(c)
+	result, err := h.service.ListUserProducts(c.Request.Context(), userID, page, pageSize, c.Query("dataScope"))
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *Handler) ListUserOrders(c *gin.Context) {
+	userID, ok := parseUserIDParam(c)
+	if !ok {
+		return
+	}
+	page, pageSize := parsePage(c)
+	result, err := h.service.ListUserOrders(c.Request.Context(), userID, page, pageSize)
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *Handler) ListUserReports(c *gin.Context) {
+	userID, ok := parseUserIDParam(c)
+	if !ok {
+		return
+	}
+	page, pageSize := parsePage(c)
+	result, err := h.service.ListUserReports(c.Request.Context(), userID, page, pageSize)
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *Handler) ListUserAppeals(c *gin.Context) {
+	userID, ok := parseUserIDParam(c)
+	if !ok {
+		return
+	}
+	page, pageSize := parsePage(c)
+	result, err := h.service.ListUserAppeals(c.Request.Context(), userID, page, pageSize)
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *Handler) ListUserReviews(c *gin.Context) {
+	userID, ok := parseUserIDParam(c)
+	if !ok {
+		return
+	}
+	page, pageSize := parsePage(c)
+	result, err := h.service.ListUserReviews(c.Request.Context(), userID, page, pageSize, c.Query("dataScope"))
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *Handler) ListUserLogs(c *gin.Context) {
+	userID, ok := parseUserIDParam(c)
+	if !ok {
+		return
+	}
+	page, pageSize := parsePage(c)
+	role, _ := middleware.CurrentRole(c)
+	result, err := h.service.ListUserLogs(c.Request.Context(), userID, page, pageSize, role == roleSuperAdmin)
+	if err != nil {
+		writeUserError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *Handler) ReviewStudentVerification(c *gin.Context) {
 	adminID, ok := middleware.CurrentUserID(c)
 	if !ok {
@@ -331,7 +567,10 @@ func (h *Handler) ReviewStudentVerification(c *gin.Context) {
 func writeUserError(c *gin.Context, err error) {
 	message := err.Error()
 	switch message {
-	case "当前账号状态不可操作", "目标用户账号状态不可审核", "管理员不能审核自己的认证":
+	case "当前账号状态不可操作", "目标用户账号状态不可审核", "管理员不能审核自己的认证",
+		"管理员不能修改自己的账号状态", "管理员不能修改自己的角色", "需要超级管理员权限",
+		"不能修改超级管理员账号状态", "普通管理员只能修改普通用户账号状态",
+		"不能通过接口修改超级管理员角色", "只有普通用户可以主动注销":
 		response.Error(c, http.StatusForbidden, response.CodeForbidden, message)
 	case "用户不存在":
 		response.Error(c, http.StatusNotFound, response.CodeNotFound, message)
@@ -339,9 +578,52 @@ func writeUserError(c *gin.Context, err error) {
 		"学生认证正在审核中，请勿重复提交",
 		"学生认证已通过，不能重复提交",
 		"当前认证状态不可提交",
-		"认证状态已变化，请刷新后重试":
+		"认证状态已变化，请刷新后重试",
+		"当前账号状态不可变更",
+		"目标用户账号状态不可操作",
+		"不允许的账号状态流转",
+		"撤销永久封禁必须关联已通过的申诉",
+		"当前账号状态不可注销",
+		"存在进行中订单，暂不能注销",
+		"当前账号状态不可重新激活",
+		"只有正常账号可以修改角色",
+		"目标用户已经是该角色":
 		response.Error(c, http.StatusConflict, response.CodeConflict, message)
 	default:
+		if isInternalUserError(message) {
+			response.Error(c, http.StatusInternalServerError, response.CodeInternal, "服务器内部错误")
+			return
+		}
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, message)
 	}
+}
+
+func isInternalUserError(message string) bool {
+	prefixes := []string{
+		"begin ", "commit ", "find ", "list ", "count ", "scan ", "iterate ",
+		"query ", "check related record", "lock ", "update ", "create ",
+		"off shelf ", "cancel account:", "reactivate account:", "submit student",
+		"review student", "get affected rows",
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(message, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseUserIDParam(c *gin.Context) (uint64, bool) {
+	userID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || userID == 0 {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid user id")
+		return 0, false
+	}
+	return userID, true
+}
+
+func parsePage(c *gin.Context) (int, int) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	return page, pageSize
 }

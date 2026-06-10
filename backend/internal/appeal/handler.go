@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -28,8 +29,13 @@ type createAppealRequest struct {
 }
 
 type handleAppealRequest struct {
-	Status       string `json:"status" binding:"required"`
-	HandleResult string `json:"handleResult" binding:"required"`
+	Status        string `json:"status" binding:"required"`
+	HandleResult  string `json:"handleResult" binding:"required"`
+	AccountStatus string `json:"accountStatus"`
+}
+
+type closeAppealRequest struct {
+	CloseReason string `json:"closeReason"`
 }
 
 type closeAppealRequest struct {
@@ -171,6 +177,10 @@ func (h *Handler) AdminHandle(c *gin.Context) {
 	var req handleAppealRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(req.AccountStatus) != "" {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "accountStatus is deprecated; use the user status API with relatedType and relatedId")
 		return
 	}
 	ipAddress := c.ClientIP()

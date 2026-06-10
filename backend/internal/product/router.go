@@ -2,7 +2,7 @@ package product
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, adminMiddleware gin.HandlerFunc) {
+func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, verifiedMiddleware, adminMiddleware gin.HandlerFunc) {
 	r.GET("/categories", handler.ListCategories)
 	r.GET("/products", handler.ListProducts)
 	r.GET("/products/:id", handler.GetProductByID)
@@ -26,11 +26,11 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, adminMiddle
 	products := r.Group("/products")
 	products.Use(authMiddleware)
 	{
-		products.POST("", handler.CreateProduct)
+		products.POST("", verifiedMiddleware, handler.CreateProduct)
 		products.GET("/my", handler.ListMyProducts)
-		products.PUT("/:id", handler.UpdateProduct)
-		products.PUT("/:id/status", handler.UpdateProductStatus)
-		products.POST("/:id/images", handler.AddProductImages)
-		products.DELETE("/:id", handler.DeleteProduct)
+		products.PUT("/:id", verifiedMiddleware, handler.UpdateProduct)
+		products.PUT("/:id/status", verifiedMiddleware, handler.UpdateProductStatus)
+		products.POST("/:id/images", verifiedMiddleware, handler.AddProductImages)
+		products.DELETE("/:id", verifiedMiddleware, handler.DeleteProduct)
 	}
 }

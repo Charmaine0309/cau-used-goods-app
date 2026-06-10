@@ -126,6 +126,44 @@ func (r *Repository) UnlockProduct(ctx context.Context, tx *sql.Tx, productID ui
 	return nil
 }
 
+func (r *Repository) UnlockProductIfLocked(ctx context.Context, tx *sql.Tx, productID uint64) error {
+	query := "UPDATE products SET status = 'ON_SALE' WHERE id = ? AND status = 'LOCKED'"
+	if tx != nil {
+		_, err := tx.ExecContext(ctx, query, productID)
+		if err != nil {
+			return fmt.Errorf("unlock product if locked: %w", err)
+		}
+		return nil
+	}
+	if _, err := r.db.ExecContext(ctx, query, productID); err != nil {
+		return fmt.Errorf("unlock product if locked: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) OffShelfLockedProduct(ctx context.Context, tx *sql.Tx, productID uint64, reason string) error {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE products
+		SET status = 'OFF_SHELF',
+		    off_shelf_reason = ?,
+		    update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+		  AND is_deleted = 0
+		  AND status = 'LOCKED'
+	`, reason, productID)
+	if err != nil {
+		return fmt.Errorf("off shelf locked product: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check off shelf locked product result: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("product not locked")
+	}
+	return nil
+}
+
 func (r *Repository) MarkProductSold(ctx context.Context, tx *sql.Tx, productID uint64) error {
 	query := "UPDATE products SET status = 'SOLD' WHERE id = ? AND status = 'LOCKED'"
 	var result sql.Result
@@ -176,19 +214,33 @@ func (r *Repository) UpdateProductStatusForAdmin(ctx context.Context, tx *sql.Tx
 	return nil
 }
 
-func (r *Repository) CreateAdminLog(ctx context.Context, tx *sql.Tx, adminID uint64, operationType string, targetType string, targetID uint64, description string, ipAddress *string) error {
-	query := `
-		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, ip_address, create_time)
-		VALUES (?, ?, ?, ?, ?, ?, NOW())
-	`
-	var err error
-	if tx != nil {
-		_, err = tx.ExecContext(ctx, query, adminID, operationType, targetType, targetID, description, ipAddress)
-	} else {
-		_, err = r.db.ExecContext(ctx, query, adminID, operationType, targetType, targetID, description, ipAddress)
+func (r *Repository) ValidateRelatedRecordTx(ctx context.Context, tx *sql.Tx, relatedType string, relatedID, orderID uint64) error {
+	if relatedType == "" {
+		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("create admin log: %w", err)
+	if tx == nil {
+		return fmt.Errorf("transaction is required")
+	}
+
+	var query string
+	var args []interface{}
+	switch relatedType {
+	case "REPORT":
+		query = "SELECT COUNT(*) FROM reports WHERE id = ? AND target_type = 'ORDER' AND target_id = ?"
+		args = []interface{}{relatedID, orderID}
+	case "APPEAL":
+		query = "SELECT COUNT(*) FROM appeals WHERE id = ? AND target_type = 'ORDER' AND target_id = ?"
+		args = []interface{}{relatedID, orderID}
+	default:
+		return fmt.Errorf("relatedType must be REPORT or APPEAL")
+	}
+
+	var count int
+	if err := tx.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return fmt.Errorf("check related record: %w", err)
+	}
+	if count == 0 {
+		return fmt.Errorf("related record not found")
 	}
 	return nil
 }
@@ -309,64 +361,6 @@ func (r *Repository) ListBySeller(ctx context.Context, sellerID uint64, status s
 	return orders, total, nil
 }
 
-func (r *Repository) ListAll(ctx context.Context, status string, page, pageSize int) ([]OrderDetail, int, error) {
-	where := "1 = 1"
-	args := []interface{}{}
-	if status != "" {
-		where += " AND o.status = ?"
-		args = append(args, status)
-	}
-
-	var total int
-	countQuery := "SELECT COUNT(*) FROM orders o WHERE " + where
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count orders: %w", err)
-	}
-
-	query := `
-		SELECT o.id, o.order_no, o.product_id, o.buyer_id, o.seller_id, o.product_title_snapshot, o.product_price_snapshot, o.status, o.remark, o.meet_time, o.meet_location, o.cancel_reason, o.cancel_by, o.expire_time, o.confirm_time, o.finish_time, o.close_time, o.create_time, o.update_time,
-			ub.nickname, us.nickname, pi.image_url
-		FROM orders o
-		LEFT JOIN users ub ON ub.id = o.buyer_id
-		LEFT JOIN users us ON us.id = o.seller_id
-		LEFT JOIN product_images pi ON pi.product_id = o.product_id AND pi.sort_order = 0
-		WHERE ` + where + `
-		ORDER BY o.create_time DESC
-		LIMIT ? OFFSET ?
-	`
-	args = append(args, pageSize, (page-1)*pageSize)
-
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, 0, fmt.Errorf("list orders: %w", err)
-	}
-	defer rows.Close()
-
-	var orders []OrderDetail
-	for rows.Next() {
-		var od OrderDetail
-		var buyerNick, sellerNick, productImg sql.NullString
-		err := rows.Scan(
-			&od.ID, &od.OrderNo, &od.ProductID, &od.BuyerID, &od.SellerID, &od.ProductTitleSnapshot, &od.ProductPriceSnapshot, &od.Status, &od.Remark, &od.MeetTime, &od.MeetLocation, &od.CancelReason, &od.CancelBy, &od.ExpireTime, &od.ConfirmTime, &od.FinishTime, &od.CloseTime, &od.CreateTime, &od.UpdateTime,
-			&buyerNick, &sellerNick, &productImg,
-		)
-		if err != nil {
-			return nil, 0, fmt.Errorf("scan order: %w", err)
-		}
-		if buyerNick.Valid {
-			od.BuyerNickname = &buyerNick.String
-		}
-		if sellerNick.Valid {
-			od.SellerNickname = &sellerNick.String
-		}
-		if productImg.Valid {
-			od.ProductImage = &productImg.String
-		}
-		orders = append(orders, od)
-	}
-	return orders, total, rows.Err()
-}
-
 func (r *Repository) HasActiveOrderByBuyer(ctx context.Context, buyerID, productID uint64) (bool, error) {
 	query := `
 		SELECT COUNT(*) FROM orders
@@ -377,6 +371,56 @@ func (r *Repository) HasActiveOrderByBuyer(ctx context.Context, buyerID, product
 		return false, fmt.Errorf("check active order: %w", err)
 	}
 	return count > 0, nil
+}
+
+func (r *Repository) CountBlockingOrdersTx(ctx context.Context, tx *sql.Tx, userID uint64) (sellerPendingConfirm, sellerWaitMeet, buyerPendingConfirm, buyerWaitMeet int, err error) {
+	err = tx.QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(CASE WHEN seller_id = ? AND status = 'PENDING_CONFIRM' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN seller_id = ? AND status = 'WAIT_MEET' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN buyer_id = ? AND status = 'PENDING_CONFIRM' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN buyer_id = ? AND status = 'WAIT_MEET' THEN 1 ELSE 0 END), 0)
+		FROM orders
+		WHERE (seller_id = ? OR buyer_id = ?)
+		  AND status IN ('PENDING_CONFIRM', 'WAIT_MEET')
+	`, userID, userID, userID, userID, userID, userID).Scan(
+		&sellerPendingConfirm,
+		&sellerWaitMeet,
+		&buyerPendingConfirm,
+		&buyerWaitMeet,
+	)
+	if err != nil {
+		return 0, 0, 0, 0, fmt.Errorf("count blocking orders: %w", err)
+	}
+	return sellerPendingConfirm, sellerWaitMeet, buyerPendingConfirm, buyerWaitMeet, nil
+}
+
+func (r *Repository) ListPendingConfirmByUserTx(ctx context.Context, tx *sql.Tx, userID uint64) ([]AccountStatusClosedOrder, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, buyer_id, seller_id, product_id, product_title_snapshot
+		FROM orders
+		WHERE (buyer_id = ? OR seller_id = ?)
+		  AND status = 'PENDING_CONFIRM'
+		ORDER BY id ASC
+		FOR UPDATE
+	`, userID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list pending confirm orders by user: %w", err)
+	}
+	defer rows.Close()
+
+	var items []AccountStatusClosedOrder
+	for rows.Next() {
+		var item AccountStatusClosedOrder
+		if err := rows.Scan(&item.ID, &item.BuyerID, &item.SellerID, &item.ProductID, &item.ProductTitleSnapshot); err != nil {
+			return nil, fmt.Errorf("scan pending confirm order: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending confirm orders: %w", err)
+	}
+	return items, nil
 }
 
 func (r *Repository) GetProductSeller(ctx context.Context, productID uint64) (uint64, error) {
@@ -407,6 +451,8 @@ func (r *Repository) ListExpiredOrders(ctx context.Context) ([]Order, error) {
 		SELECT id, order_no, product_id, buyer_id, seller_id, product_title_snapshot, product_price_snapshot, status, remark, meet_time, meet_location, cancel_reason, cancel_by, expire_time, confirm_time, finish_time, close_time, create_time, update_time
 		FROM orders
 		WHERE status = 'PENDING_CONFIRM' AND expire_time < NOW()
+		ORDER BY expire_time ASC, id ASC
+		LIMIT 100
 	`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
@@ -457,6 +503,28 @@ func (r *Repository) ListExpiredOrders(ctx context.Context) ([]Order, error) {
 		orders = append(orders, o)
 	}
 	return orders, nil
+}
+
+func (r *Repository) CancelExpiredOrderTx(ctx context.Context, tx *sql.Tx, orderID, buyerID uint64) (bool, error) {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET status = 'CANCELED',
+		    cancel_reason = '订单超时未确认，系统自动取消',
+		    cancel_by = ?,
+		    close_time = NOW(),
+		    update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+		  AND status = 'PENDING_CONFIRM'
+		  AND expire_time < NOW()
+	`, buyerID, orderID)
+	if err != nil {
+		return false, fmt.Errorf("cancel expired order: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("check expired order cancel result: %w", err)
+	}
+	return affected == 1, nil
 }
 
 func scanOrder(row *sql.Row) (*Order, error) {

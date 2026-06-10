@@ -11,10 +11,18 @@ import (
 )
 
 func Admin(db *sql.DB) gin.HandlerFunc {
+	return requireRole(db, false)
+}
+
+func SuperAdmin(db *sql.DB) gin.HandlerFunc {
+	return requireRole(db, true)
+}
+
+func requireRole(db *sql.DB, superAdminOnly bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, ok := CurrentUserID(c)
 		if !ok {
-			response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+			response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未登录或登录状态已失效")
 			c.Abort()
 			return
 		}
@@ -27,16 +35,21 @@ func Admin(db *sql.DB) gin.HandlerFunc {
 		).Scan(&role, &accountStatus)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				response.Error(c, http.StatusForbidden, response.CodeForbidden, "admin permission required")
+				response.Error(c, http.StatusForbidden, response.CodeForbidden, "需要管理员权限")
 			} else {
-				response.Error(c, http.StatusInternalServerError, response.CodeInternal, "check admin permission failed")
+				response.Error(c, http.StatusInternalServerError, response.CodeInternal, "校验管理员权限失败")
 			}
 			c.Abort()
 			return
 		}
 
-		if role != "ADMIN" {
-			response.Error(c, http.StatusForbidden, response.CodeForbidden, "admin permission required")
+		if superAdminOnly && role != "SUPER_ADMIN" {
+			response.Error(c, http.StatusForbidden, response.CodeForbidden, "需要超级管理员权限")
+			c.Abort()
+			return
+		}
+		if !superAdminOnly && role != "ADMIN" && role != "SUPER_ADMIN" {
+			response.Error(c, http.StatusForbidden, response.CodeForbidden, "需要管理员权限")
 			c.Abort()
 			return
 		}
@@ -45,6 +58,7 @@ func Admin(db *sql.DB) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		c.Set(ContextRole, role)
 		c.Next()
 	}
 }
