@@ -1,8 +1,8 @@
-# 王珂雅商品相关模块接口文档（最终版）
+# 王珂雅商品相关模块接口文档（修复版）
 
 ## 1. 文档说明
 
-本文档用于说明 CAU 校园二手交易平台中王珂雅负责的商品相关后端模块接口，覆盖商品分类、商品列表、搜索筛选、商品详情、商品发布、商品编辑、商品上下架、商品删除、商品图片上传与绑定、AI 商品优化、商品统计以及收藏/浏览统计联动检查等内容。
+本文档用于说明 CAU 校园二手交易平台中王珂雅负责的商品相关后端接口，覆盖商品分类、商品列表、搜索筛选、商品详情、商品发布、商品编辑、商品上下架、商品删除、商品图片上传与绑定、AI 商品优化、收藏接口、浏览量统计、收藏量统计以及管理员商品统计接口。
 
 - 模块负责人：王珂雅
 - 后端基础地址：`http://127.0.0.1:8080`
@@ -24,7 +24,7 @@ Authorization: Bearer <token>
   "code": 0,
   "message": "success",
   "data": {},
-  "timestamp": "2026-06-10 10:12:08"
+  "timestamp": "2026-06-10 16:50:42"
 }
 ```
 
@@ -35,7 +35,7 @@ Authorization: Bearer <token>
   "code": 403,
   "message": "需要管理员权限",
   "data": null,
-  "timestamp": "2026-06-10 10:08:12"
+  "timestamp": "2026-06-10 16:50:42"
 }
 ```
 
@@ -69,8 +69,7 @@ curl "http://127.0.0.1:8080/categories"
     {"id":4,"name":"服饰鞋包","parentId":0,"sortOrder":40,"status":"ENABLED"},
     {"id":5,"name":"运动户外","parentId":0,"sortOrder":50,"status":"ENABLED"},
     {"id":6,"name":"其他","parentId":0,"sortOrder":999,"status":"ENABLED"}
-  ],
-  "timestamp": "2026-06-09 18:33:04"
+  ]
 }
 ```
 
@@ -117,27 +116,26 @@ curl "http://127.0.0.1:8080/products?keyword=台灯&categoryId=2&minPrice=100&ma
   "data": {
     "list": [
       {
-        "id": 5,
-        "sellerId": 5,
+        "id": 7,
+        "sellerId": 6,
         "categoryId": 2,
-        "title": "宿舍自用台灯",
-        "description": "九成新台灯，适合宿舍学习使用",
+        "title": "浏览收藏统计测试商品",
+        "description": "用于测试浏览量和收藏量统计",
         "originalPrice": 199,
-        "price": 150,
+        "price": 120,
         "conditionLevel": "九成新",
         "meetLocation": "图书馆门口",
         "status": "ON_SALE",
-        "viewCount": 0,
-        "favoriteCount": 0,
-        "createTime": "2026-06-03 10:33:26",
+        "viewCount": 1,
+        "favoriteCount": 1,
+        "createTime": "2026-06-10 10:06:00",
         "images": []
       }
     ],
     "page": 1,
     "pageSize": 10,
     "total": 1
-  },
-  "timestamp": "2026-06-09 18:33:41"
+  }
 }
 ```
 
@@ -152,8 +150,7 @@ curl "http://127.0.0.1:8080/products?keyword=台灯&categoryId=2&minPrice=100&ma
     "page": 1,
     "pageSize": 10,
     "total": 0
-  },
-  "timestamp": "2026-06-09 18:33:46"
+  }
 }
 ```
 
@@ -174,7 +171,7 @@ AND condition_level = ?
 
 ---
 
-## 5. 商品详情接口
+## 5. 商品详情与浏览量接口
 
 ### 5.1 获取商品详情
 
@@ -206,16 +203,24 @@ curl "http://127.0.0.1:8080/products/7"
     "conditionLevel": "九成新",
     "meetLocation": "图书馆门口",
     "status": "ON_SALE",
-    "viewCount": 0,
-    "favoriteCount": 0,
+    "viewCount": 1,
+    "favoriteCount": 1,
     "createTime": "2026-06-10 10:06:00",
     "images": []
-  },
-  "timestamp": "2026-06-10 10:12:20"
+  }
 }
 ```
 
-### 5.2 下架或删除后的详情表现
+### 5.2 浏览量联动说明
+
+商品详情接口已接入浏览量统计逻辑：
+
+1. 调用 `GET /products/:id` 查询在售商品详情时，后端会将 `products.view_count` 自动加 1；
+2. 浏览量更新只作用于 `is_deleted=0` 且 `status='ON_SALE'` 的商品；
+3. 浏览量字段会在商品详情、商品列表和管理员统计接口中体现；
+4. 修复验证结果中，访问商品 7 详情后，`view_count` 由 0 增加为 1，管理员统计接口 `totalViews` 同步返回 1。
+
+### 5.3 下架或删除后的详情表现
 
 商品下架或删除后，普通详情接口可能返回：
 
@@ -277,8 +282,7 @@ curl -X POST http://127.0.0.1:8080/products ^
   "message": "success",
   "data": {
     "id": 7
-  },
-  "timestamp": "2026-06-10 10:06:00"
+  }
 }
 ```
 
@@ -415,8 +419,7 @@ curl -X POST http://127.0.0.1:8080/upload/image ^
   "message": "success",
   "data": {
     "url": "/uploads/products/1781001668926493800.png"
-  },
-  "timestamp": "2026-06-09 18:41:08"
+  }
 }
 ```
 
@@ -448,8 +451,7 @@ curl -X POST http://127.0.0.1:8080/products/6/images ^
     "images": [
       "/uploads/products/1781001668926493800.png"
     ]
-  },
-  "timestamp": "2026-06-09 18:42:29"
+  }
 }
 ```
 
@@ -479,8 +481,7 @@ curl -X POST http://127.0.0.1:8080/ai/optimize-product ^
 {
   "code": 500,
   "message": "AI服务暂不可用：未配置 API Key",
-  "data": null,
-  "timestamp": "2026-06-09 18:38:51"
+  "data": null
 }
 ```
 
@@ -488,7 +489,7 @@ curl -X POST http://127.0.0.1:8080/ai/optimize-product ^
 
 ---
 
-## 12. 收藏接口及商品收藏量联动说明
+## 12. 收藏接口及商品收藏量联动
 
 ### 12.1 添加收藏
 
@@ -516,11 +517,38 @@ curl -X POST http://127.0.0.1:8080/favorites ^
   "data": {
     "favorited": true
   },
-  "timestamp": "2026-06-10 10:12:08"
+  "timestamp": "2026-06-10 16:47:00"
 }
 ```
 
-### 12.2 检查收藏状态
+### 12.2 取消收藏
+
+- 请求方式：`DELETE`
+- 接口路径：`/favorites/:productId`
+- 是否需要登录：是
+- 功能说明：取消收藏指定商品。
+
+#### 请求示例
+
+```bash
+curl -X DELETE "http://127.0.0.1:8080/favorites/7" ^
+-H "Authorization: Bearer <buyer_token>"
+```
+
+#### 返回示例
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "favorited": false
+  },
+  "timestamp": "2026-06-10 16:46:53"
+}
+```
+
+### 12.3 检查收藏状态
 
 - 请求方式：`GET`
 - 接口路径：`/favorites/check?productId=:id`
@@ -542,42 +570,27 @@ curl "http://127.0.0.1:8080/favorites/check?productId=7" ^
   "message": "success",
   "data": {
     "favorited": true
-  },
-  "timestamp": "2026-06-10 10:12:14"
+  }
 }
 ```
 
-### 12.3 当前联动检查结果
+### 12.4 收藏量联动修复说明
 
-测试发现：收藏接口本身可以成功创建收藏关系，但商品详情中的 `favoriteCount` 未同步增加，管理员统计接口中的 `totalFavorites` 也未同步更新。
+收藏接口已与商品收藏量字段完成联动：
 
-数据库验证结果：
+1. 买家调用 `POST /favorites` 收藏商品成功后，`favorites` 表会保存有效收藏记录；
+2. 如果是新增收藏或恢复已取消收藏，`products.favorite_count` 会自动 +1；
+3. 买家调用 `DELETE /favorites/:productId` 取消收藏后，`favorites.is_deleted` 会被置为 1；
+4. 取消收藏时 `products.favorite_count` 会自动 -1，且不会小于 0；
+5. 收藏关系和商品收藏数字段在同一事务中处理，避免 `favorites` 表与 `products.favorite_count` 不一致。
 
-```sql
-SELECT * FROM favorites WHERE product_id = 7;
-```
-
-返回：
-
-```text
-id=1, user_id=8, product_id=7, is_deleted=0
-```
-
-但：
-
-```sql
-SELECT id, title, view_count, favorite_count
-FROM products
-WHERE id = 7;
-```
-
-返回：
+本次验证结果：
 
 ```text
-id=7, view_count=0, favorite_count=0
+products.view_count = 1
+products.favorite_count = 1
+favorites.is_deleted = 0
 ```
-
-说明收藏关系已创建，但 `products.favorite_count` 尚未与收藏流程完成联动更新。
 
 ---
 
@@ -599,7 +612,7 @@ curl "http://127.0.0.1:8080/stats/products/overview" ^
 -H "Authorization: Bearer <admin_token>"
 ```
 
-#### 返回示例
+#### 修复后返回示例
 
 ```json
 {
@@ -612,11 +625,11 @@ curl "http://127.0.0.1:8080/stats/products/overview" ^
     "lockedProducts": 0,
     "soldProducts": 1,
     "deletedProducts": 2,
-    "totalViews": 0,
-    "totalFavorites": 0,
+    "totalViews": 1,
+    "totalFavorites": 1,
     "averagePrice": 66.4
   },
-  "timestamp": "2026-06-10 10:12:32"
+  "timestamp": "2026-06-10 16:50:42"
 }
 ```
 
@@ -639,7 +652,7 @@ curl "http://127.0.0.1:8080/stats/products/overview" ^
 | `totalViews` | 总浏览量 |
 | `totalFavorites` | 总收藏量 |
 
-#### 返回示例
+#### 修复后返回示例
 
 ```json
 {
@@ -652,11 +665,20 @@ curl "http://127.0.0.1:8080/stats/products/overview" ^
       "productCount": 4,
       "onSaleCount": 2,
       "averagePrice": 135,
+      "totalViews": 1,
+      "totalFavorites": 1
+    },
+    {
+      "categoryId": 1,
+      "categoryName": "教材资料",
+      "productCount": 3,
+      "onSaleCount": 2,
+      "averagePrice": 20.666667,
       "totalViews": 0,
       "totalFavorites": 0
     }
   ],
-  "timestamp": "2026-06-10 10:12:47"
+  "timestamp": "2026-06-10 16:50:50"
 }
 ```
 
@@ -701,8 +723,7 @@ curl -X DELETE http://127.0.0.1:8080/products/6 ^
   "message": "success",
   "data": {
     "id": 6
-  },
-  "timestamp": "2026-06-09 18:47:01"
+  }
 }
 ```
 
@@ -712,8 +733,7 @@ curl -X DELETE http://127.0.0.1:8080/products/6 ^
 {
   "code": 404,
   "message": "product not found",
-  "data": null,
-  "timestamp": "2026-06-09 18:47:08"
+  "data": null
 }
 ```
 
