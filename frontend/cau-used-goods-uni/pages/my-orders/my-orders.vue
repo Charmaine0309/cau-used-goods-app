@@ -48,6 +48,7 @@ import { computed, ref } from 'vue'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { cancelOrder, completeOrder, confirmOrder, listMyOrders } from '../../api/product'
 import { formatPrice, normalizeImage } from '../../utils/product-format'
+import { displayRelatedUserName } from '../../utils/user-format'
 
 const role = ref('buyer')
 const orders = ref([])
@@ -74,7 +75,9 @@ const formatDateTime = (value) => {
   if (Number.isNaN(date.getTime())) return value
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
-const peerName = (item) => role.value === 'buyer' ? (item.sellerNickname || 'CAU 同学') : (item.buyerNickname || 'CAU 同学')
+const peerName = (item) => role.value === 'buyer'
+  ? displayRelatedUserName(item, 'seller', 'CAU 同学')
+  : displayRelatedUserName(item, 'buyer', 'CAU 同学')
 const canCancel = (item) => ['PENDING_CONFIRM', 'WAIT_MEET'].includes(item.status)
 
 const loadOrders = async (reset = false) => {

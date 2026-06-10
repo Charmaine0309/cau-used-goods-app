@@ -1,6 +1,7 @@
-import { BASE_URL } from '../utils/request'
+﻿import { BASE_URL } from '../utils/request'
 import * as api from '../api/trade'
 import { REPORT_REASON, TARGET_TYPE } from '../utils/constants'
+import { displayRelatedUserName } from '../utils/user-format'
 
 function absoluteImage(url) {
   if (!url || /^https?:\/\//.test(url)) return url
@@ -33,8 +34,8 @@ function normalizeOrder(item = {}) {
   return {
     ...item,
     id: String(item.id),
-    sellerName: item.sellerName || item.sellerNickname || '卖家',
-    buyerName: item.buyerName || item.buyerNickname || '买家',
+    sellerName: displayRelatedUserName(item, 'seller', '卖家'),
+    buyerName: displayRelatedUserName(item, 'buyer', '买家'),
     createdAt: formatDateTime(item.createdAt || item.createTime),
     meetTime: formatDateTime(item.meetTime),
     expireTime: formatDateTime(item.expireTime),
@@ -95,3 +96,4 @@ export const tradeService = {
     createdAt: formatDateTime(item.createTime || item.createdAt)
   }))
 }
+

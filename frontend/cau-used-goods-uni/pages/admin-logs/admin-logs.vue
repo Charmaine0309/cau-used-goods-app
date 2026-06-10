@@ -23,6 +23,7 @@
         <text class="arrow">›</text>
       </view>
       <view v-if="formatDescription(log)" class="detail">{{ formatDescription(log) }}</view>
+      <view v-if="sourceText(log)" class="source">{{ sourceText(log) }}</view>
     </view>
   </view>
 </template>
@@ -223,6 +224,12 @@ const formatDescription = (log) => {
   }
 }
 
+const sourceText = (log) => {
+  if (!log?.relatedType || !log?.relatedId) return ''
+  const typeText = targetLabelMap[log.relatedType] || log.relatedType
+  return `来源：${typeText} #${log.relatedId}`
+}
+
 const pad = (value) => String(value).padStart(2, '0')
 
 const formatDateTime = (value) => {
@@ -253,7 +260,13 @@ const relatedPage = (log) => {
     CATEGORY: '/pages/admin-categories/admin-categories',
     ORDER: '/pages/admin-orders/admin-orders'
   }
-  return map[log.targetType] || ''
+  return withSourceQuery(map[log.targetType] || '', log)
+}
+
+const withSourceQuery = (url, log) => {
+  if (!url || !log?.relatedType || !log?.relatedId) return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}relatedType=${log.relatedType}&relatedId=${log.relatedId}`
 }
 
 const goRelatedPage = (log) => {
@@ -335,6 +348,12 @@ onShow(load)
 .detail {
   line-height: 38rpx;
   color: #8a96a8;
+}
+
+.source {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #17a84b;
 }
 
 .arrow {

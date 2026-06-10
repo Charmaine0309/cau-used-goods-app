@@ -28,9 +28,9 @@
     </view>
 
     <view class="card seller">
-      <view class="avatar">{{ (product.seller?.nickname || '卖').slice(0, 1) }}</view>
+      <view class="avatar">{{ sellerAvatarText }}</view>
       <view>
-        <view class="seller-name">{{ product.seller?.nickname || 'CAU 同学' }}</view>
+        <view class="seller-name">{{ sellerName }}</view>
         <view class="meta">{{ product.seller?.college || '中国农业大学' }}</view>
       </view>
     </view>
@@ -62,12 +62,19 @@ import {
 import { buildCategoryMap, formatProduct, getStatusText } from '../../utils/product-format'
 import { getToken, isVerifiedUser } from '../../utils/auth'
 import { navigate } from '../../utils/navigation'
+import { displayUserName, isBannedUserStatus, isCanceledUserStatus } from '../../utils/user-format'
 
 const product = ref(null)
 const isFavorite = ref(false)
 
 const statusText = computed(() => getStatusText(product.value?.status))
 const favoriteText = computed(() => isFavorite.value ? '已收藏' : '收藏')
+const sellerName = computed(() => displayUserName(product.value?.seller || {}, 'CAU 同学'))
+const sellerAvatarText = computed(() => {
+  const status = product.value?.seller?.accountStatus || product.value?.seller?.account_status || product.value?.seller?.status
+  if (isBannedUserStatus(status) || isCanceledUserStatus(status)) return '账'
+  return (sellerName.value || '卖').slice(0, 1)
+})
 
 const ensureVerified = () => {
   if (!getToken()) {

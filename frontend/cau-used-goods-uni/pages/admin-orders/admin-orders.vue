@@ -32,8 +32,8 @@
         <view v-else class="product-image placeholder">商品</view>
         <view class="product-main">
           <view class="price">￥{{ money(item.productPriceSnapshot) }}</view>
-          <view class="meta">买家：{{ item.buyerNickname || `用户${item.buyerId}` }}</view>
-          <view class="meta">卖家：{{ item.sellerNickname || `用户${item.sellerId}` }}</view>
+          <view class="meta">买家：{{ orderUserName(item, 'buyer') }}</view>
+          <view class="meta">卖家：{{ orderUserName(item, 'seller') }}</view>
         </view>
       </view>
 
@@ -75,14 +75,17 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
-import { getAdminOrders, updateAdminOrderStatus } from '../../api/admin'
+import { onLoad, onShow } from '@dcloudio/uni-app'
+import { exceptionCloseAdminOrder, getAdminOrders } from '../../api/admin'
 import { normalizeImage } from '../../utils/product-format'
+import { displayRelatedUserName } from '../../utils/user-format'
 
 const loading = ref(false)
 const submitting = ref(false)
 const activeStatus = ref('ALL')
 const orders = ref([])
+const relatedType = ref('')
+const relatedId = ref(0)
 const closeModal = reactive({ visible: false, order: null, reason: '', note: '' })
 
 const statusFilters = [
@@ -113,6 +116,11 @@ const load = async () => {
   }
 }
 
+onLoad((query) => {
+  relatedType.value = String(query.relatedType || '').toUpperCase()
+  relatedId.value = Number(query.relatedId || 0)
+})
+
 onShow(load)
 
 const selectStatus = (status) => { activeStatus.value = status }
@@ -122,6 +130,7 @@ const canExceptionClose = (status) => ['PENDING_CONFIRM', 'WAIT_MEET'].includes(
 const money = (value) => Number(value || 0).toFixed(2)
 const productImage = (item) => normalizeImage(item?.productImage || '')
 const formatTime = (value) => value ? String(value).replace('T', ' ').replace(/\+\d{2}:\d{2}$/, '').slice(0, 16) : ''
+const orderUserName = (item, role) => displayRelatedUserName(item, role, `用户${item?.[`${role}Id`] || ''}`)
 
 const openCloseModal = (order) => {
   closeModal.visible = true
@@ -148,7 +157,12 @@ const submitExceptionClose = async () => {
   if (!closeModal.order || submitting.value) return
   submitting.value = true
   try {
-    await updateAdminOrderStatus(closeModal.order.id, 'EXCEPTION_CLOSED', buildReason())
+    const payload = { reason: buildReason() }
+    if (relatedType.value && relatedId.value) {
+      payload.relatedType = relatedType.value
+      payload.relatedId = relatedId.value
+    }
+    await exceptionCloseAdminOrder(closeModal.order.id, payload)
     uni.showToast({ title: '已异常关闭', icon: 'success' })
     closeModal.visible = false
     await load()

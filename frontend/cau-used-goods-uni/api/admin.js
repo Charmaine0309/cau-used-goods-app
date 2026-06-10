@@ -1,4 +1,4 @@
-import { request } from '../utils/request'
+﻿import { request } from '../utils/request'
 
 export const getProductOverview = () => {
   return request({ url: '/stats/products/overview' })
@@ -63,13 +63,14 @@ export const getAdminProducts = () => {
   })
 }
 
-export const updateAdminProductStatus = (productId, status) => {
+export const updateAdminProductStatus = (productId, status, extra = {}) => {
   return request({
-    url: `/products/${productId}/status`,
+    url: `/admin/products/${productId}/status`,
     method: 'PUT',
     data: {
       status,
-      reason: status === 'ON_SALE' ? '管理员上架商品' : '管理员下架商品'
+      reason: status === 'ON_SALE' ? '管理员上架商品' : '管理员下架商品',
+      ...extra
     }
   })
 }
@@ -201,3 +202,12 @@ export const updateAdminOrderStatus = (orderId, status, reason = '') => {
     data: { status, reason }
   })
 }
+
+export const exceptionCloseAdminOrder = (orderId, payload = {}) => {
+  return request({
+    url: `/admin/orders/${orderId}/exception-close`,
+    method: 'POST',
+    data: payload
+  })
+}
+
