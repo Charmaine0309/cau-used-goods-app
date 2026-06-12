@@ -338,7 +338,29 @@ func (r *Repository) ListProducts(ctx context.Context, input ListProductsInput) 
 		Total:    total,
 	}, nil
 }
+func (r *Repository) IncrementViewCount(ctx context.Context, productID uint64) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE products
+		SET view_count = view_count + 1,
+		    update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+		  AND is_deleted = 0
+		  AND status = 'ON_SALE'
+	`, productID)
+	if err != nil {
+		return fmt.Errorf("increment product view count: %w", err)
+	}
 
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check increment product view count result: %w", err)
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
 func (r *Repository) GetProductByID(ctx context.Context, id uint64) (*Product, error) {
 	var p Product
 	var desc sql.NullString

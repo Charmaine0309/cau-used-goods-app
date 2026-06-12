@@ -15,23 +15,112 @@ func NewRepository(db *sql.DB) *Repository {
 }
 
 func (r *Repository) Add(ctx context.Context, userID, productID uint64) error {
-	query := `
-		INSERT INTO favorites (user_id, product_id)
-		VALUES (?, ?)
-		ON DUPLICATE KEY UPDATE is_deleted = 0
-	`
-	_, err := r.db.ExecContext(ctx, query, userID, productID)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("add favorite: %w", err)
+		return fmt.Errorf("begin add favorite tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	var isDeleted bool
+	err = tx.QueryRowContext(ctx, `
+		SELECT is_deleted
+		FROM favorites
+		WHERE user_id = ? AND product_id = ?
+		FOR UPDATE
+	`, userID, productID).Scan(&isDeleted)
+
+	if err == sql.ErrNoRows {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO favorites (user_id, product_id, is_deleted)
+			VALUES (?, ?, 0)
+		`, userID, productID); err != nil {
+			return fmt.Errorf("insert favorite: %w", err)
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE products
+			SET favorite_count = favorite_count + 1,
+			    update_time = CURRENT_TIMESTAMP
+			WHERE id = ? AND is_deleted = 0
+		`, productID); err != nil {
+			return fmt.Errorf("increment favorite count: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("query favorite: %w", err)
+	} else if isDeleted {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE favorites
+			SET is_deleted = 0
+			WHERE user_id = ? AND product_id = ?
+		`, userID, productID); err != nil {
+			return fmt.Errorf("restore favorite: %w", err)
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE products
+			SET favorite_count = favorite_count + 1,
+			    update_time = CURRENT_TIMESTAMP
+			WHERE id = ? AND is_deleted = 0
+		`, productID); err != nil {
+			return fmt.Errorf("increment favorite count: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit add favorite tx: %w", err)
 	}
 	return nil
 }
 
 func (r *Repository) Remove(ctx context.Context, userID, productID uint64) error {
-	query := `UPDATE favorites SET is_deleted = 1 WHERE user_id = ? AND product_id = ?`
-	_, err := r.db.ExecContext(ctx, query, userID, productID)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("remove favorite: %w", err)
+		return fmt.Errorf("begin remove favorite tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	var isDeleted bool
+	err = tx.QueryRowContext(ctx, `
+		SELECT is_deleted
+		FROM favorites
+		WHERE user_id = ? AND product_id = ?
+		FOR UPDATE
+	`, userID, productID).Scan(&isDeleted)
+
+	if err == sql.ErrNoRows {
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit remove favorite tx: %w", err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("query favorite: %w", err)
+	}
+
+	if !isDeleted {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE favorites
+			SET is_deleted = 1
+			WHERE user_id = ? AND product_id = ?
+		`, userID, productID); err != nil {
+			return fmt.Errorf("remove favorite: %w", err)
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE products
+			SET favorite_count = CASE
+			        WHEN favorite_count > 0 THEN favorite_count - 1
+			        ELSE 0
+			    END,
+			    update_time = CURRENT_TIMESTAMP
+			WHERE id = ? AND is_deleted = 0
+		`, productID); err != nil {
+			return fmt.Errorf("decrement favorite count: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit remove favorite tx: %w", err)
 	}
 	return nil
 }
