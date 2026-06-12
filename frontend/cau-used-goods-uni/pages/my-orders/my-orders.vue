@@ -1,6 +1,6 @@
 <template>
   <view class="page">
-    <view class="tabs">
+    <view v-if="!fixedRole" class="tabs">
       <view class="tab" :class="{ active: role === 'buyer' }" @click="switchRole('buyer')">我买到的</view>
       <view class="tab" :class="{ active: role === 'seller' }" @click="switchRole('seller')">我卖出的</view>
     </view>
@@ -51,6 +51,7 @@ import { formatPrice, normalizeImage } from '../../utils/product-format'
 import { displayRelatedUserName } from '../../utils/user-format'
 
 const role = ref('buyer')
+const fixedRole = ref(false)
 const orders = ref([])
 const total = ref(0)
 const page = ref(1)
@@ -99,6 +100,7 @@ const loadOrders = async (reset = false) => {
 }
 
 const switchRole = (value) => {
+  if (fixedRole.value) return
   if (role.value === value) return
   role.value = value
   uni.setNavigationBarTitle({ title: value === 'buyer' ? '我买到的' : '我卖出的' })
@@ -169,6 +171,7 @@ const cancel = (item) => {
 }
 
 onLoad((options) => {
+  fixedRole.value = options.role === 'buyer' || options.role === 'seller'
   role.value = options.role === 'seller' ? 'seller' : 'buyer'
   uni.setNavigationBarTitle({ title: role.value === 'buyer' ? '我买到的' : '我卖出的' })
   loadOrders(true)
