@@ -25,8 +25,28 @@ import { tradeService } from '../../services/trade'
 import { showError, showSuccess } from '../../utils/navigation'
 
 const orderId = ref('')
+const order = ref(null)
 const form = reactive({ rating: 5, content: '', anonymous: false })
-onLoad((options) => { orderId.value = options.orderId })
+onLoad(async (options) => {
+  orderId.value = options.orderId
+  if (!orderId.value) return
+  order.value = await tradeService.getOrder(orderId.value).catch(() => null)
+})
+
+function saveSellerReview() {
+  const sellerId = order.value?.sellerId || order.value?.seller?.id
+  if (!sellerId) return
+  const key = `user-reviews-${sellerId}`
+  const list = uni.getStorageSync(key) || []
+  const next = [{
+    id: Date.now(),
+    rating: form.rating,
+    content: form.content,
+    productTitle: order.value?.product?.title || order.value?.productTitleSnapshot || '交易商品',
+    createTime: new Date().toLocaleString()
+  }].concat(Array.isArray(list) ? list : [])
+  uni.setStorageSync(key, next.slice(0, 20))
+}
 
 async function submit() {
   if (!form.content.trim()) {
@@ -35,6 +55,8 @@ async function submit() {
   }
   try {
     await tradeService.createReview({ orderId: orderId.value, ...form })
+    uni.setStorageSync(`order-reviewed-${orderId.value}`, true)
+    saveSellerReview()
     showSuccess('评价成功')
     setTimeout(() => uni.navigateBack(), 500)
   } catch (error) {

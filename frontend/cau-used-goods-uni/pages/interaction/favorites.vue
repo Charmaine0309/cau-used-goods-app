@@ -24,7 +24,7 @@ import { ref } from 'vue'
 import EmptyState from '../../components/EmptyState.vue'
 import ProductRow from '../../components/ProductRow.vue'
 import { tradeService } from '../../services/trade'
-import { navigate, showError, showSuccess } from '../../utils/navigation'
+import { navigate, showSuccess } from '../../utils/navigation'
 
 const products = ref([])
 onShow(load)
@@ -33,7 +33,7 @@ async function load() {
   try {
     products.value = await tradeService.getFavorites()
   } catch (error) {
-    showError(error)
+    products.value = []
   }
 }
 

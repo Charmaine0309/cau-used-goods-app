@@ -1,24 +1,42 @@
 <template>
   <view class="page">
-    <view v-if="product" class="card">
-      <ProductRow :product="product" />
+    <view v-if="product" class="product-card">
+      <image v-if="product.image" class="product-image" :src="product.image" mode="aspectFill" />
+      <view v-else class="product-image placeholder">商品</view>
+      <view class="product-info">
+        <text class="product-title">{{ product.title }}</text>
+        <text class="product-price">¥{{ product.price }}</text>
+        <text class="product-location">{{ product.meetLocation || '预约后协商面交地点' }}</text>
+      </view>
     </view>
+
     <view class="notice">平台不提供线上支付和物流服务，请选择校园内公共区域完成面交。</view>
-    <view class="card">
+
+    <view class="card form-card">
       <view class="field">
         <text class="field-label">期望面交时间</text>
-        <input v-model="form.meetTime" class="input appointment-input" placeholder="格式：2026-06-10 18:30" />
-        <text class="field-tip">请填写完整日期和时间，例如：2026-06-10 18:30</text>
+        <view class="datetime-row">
+          <picker mode="date" :start="minDate" :value="form.meetDate" @change="changeDate">
+            <view class="picker-box">{{ form.meetDate || '选择日期' }}</view>
+          </picker>
+          <picker mode="time" :value="form.meetClock" @change="changeTime">
+            <view class="picker-box">{{ form.meetClock || '选择时间' }}</view>
+          </picker>
+        </view>
+        <text class="field-tip">请选择当前时间之后的面交时间。</text>
       </view>
+
       <view class="field">
         <text class="field-label">面交地点</text>
         <input v-model="form.meetLocation" class="input appointment-input" placeholder="如：东区图书馆门口" />
       </view>
+
       <view class="field">
         <text class="field-label">备注（选填）</text>
         <textarea v-model="form.remark" class="textarea" placeholder="可填写时间补充或其他说明" maxlength="200" />
       </view>
-      <button class="btn btn-primary" :disabled="submitting" @click="submit">
+
+      <button class="btn btn-primary submit-btn" :disabled="submitting" @click="submit">
         {{ submitting ? '正在提交...' : '确认提交预约' }}
       </button>
     </view>
@@ -27,18 +45,19 @@
 
 <script setup>
 import { onLoad } from '@dcloudio/uni-app'
-import { reactive, ref } from 'vue'
-import ProductRow from '../../components/ProductRow.vue'
+import { computed, reactive, ref } from 'vue'
 import { tradeService } from '../../services/trade'
-import { navigate, showError, showSuccess } from '../../utils/navigation'
+import { showError, showSuccess } from '../../utils/navigation'
 
 const product = ref()
 const submitting = ref(false)
 const productId = ref('')
-const form = reactive({ meetTime: '', meetLocation: '', remark: '' })
+const form = reactive({ meetDate: '', meetClock: '', meetLocation: '', remark: '' })
+const minDate = computed(() => formatDate(new Date()))
 
 onLoad(async (options) => {
   productId.value = options.productId || 'p-1001'
+  initDefaultTime()
   try {
     product.value = await tradeService.getProduct(productId.value)
     form.meetLocation = product.value.meetLocation
@@ -47,37 +66,86 @@ onLoad(async (options) => {
   }
 })
 
+function pad(value) {
+  return String(value).padStart(2, '0')
+}
+
+function formatDate(date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function formatClock(date) {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function initDefaultTime() {
+  const next = new Date(Date.now() + 60 * 60 * 1000)
+  form.meetDate = formatDate(next)
+  form.meetClock = formatClock(next)
+}
+
+function changeDate(event) {
+  form.meetDate = event.detail.value
+}
+
+function changeTime(event) {
+  form.meetClock = event.detail.value
+}
+
+function selectedMeetDate() {
+  if (!form.meetDate || !form.meetClock) return null
+  const date = new Date(`${form.meetDate.replace(/-/g, '/')} ${form.meetClock}:00`)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function normalizedMeetTime() {
+  const date = selectedMeetDate()
+  if (!date) return ''
+  return `${formatDate(date)} ${formatClock(date)}:00`
+}
+
 async function submit() {
-  if (!form.meetTime || !form.meetLocation) {
-    showError(new Error('请填写面交时间和地点'))
+  if (!form.meetDate || !form.meetClock || !form.meetLocation) {
+    showError(new Error('请选择面交时间并填写地点'))
     return
   }
-  const meetTime = normalizeMeetTime(form.meetTime)
-  if (!meetTime) {
-    showError(new Error('时间格式应为：2026-06-10 18:30'))
+  const date = selectedMeetDate()
+  if (!date || date.getTime() <= Date.now()) {
+    showError(new Error('面交时间必须晚于当前时间'))
     return
   }
   submitting.value = true
   try {
-    const order = await tradeService.createAppointment({ productId: productId.value, ...form, meetTime })
+    const order = await tradeService.createAppointment({
+      productId: productId.value,
+      meetLocation: form.meetLocation,
+      remark: form.remark,
+      meetTime: normalizedMeetTime()
+    })
     showSuccess('预约成功')
-    setTimeout(() => navigate('/pages/order/detail', { id: order.id }), 500)
+    setTimeout(() => uni.redirectTo({ url: `/pages/order/detail?id=${order.id}` }), 500)
   } catch (error) {
     showError(error)
   } finally {
     submitting.value = false
   }
 }
-
-function normalizeMeetTime(value) {
-  const text = String(value || '').trim()
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(text)) return `${text}:00`
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)) return text
-  return ''
-}
 </script>
 
 <style scoped lang="scss">
+.page { min-height: 100vh; padding: 24rpx; background: #f6f7f9; box-sizing: border-box; }
+.product-card { display: flex; gap: 22rpx; padding: 24rpx; border-radius: 26rpx; background: #fff; box-shadow: 0 10rpx 32rpx rgba(26, 61, 43, .06); }
+.product-image { width: 220rpx; height: 180rpx; flex: 0 0 220rpx; border-radius: 22rpx; background: #edf2ef; }
+.placeholder { display: flex; align-items: center; justify-content: center; color: #9aa5a1; }
+.product-info { display: flex; flex: 1; min-width: 0; flex-direction: column; justify-content: center; }
+.product-title { display: -webkit-box; overflow: hidden; color: #222; font-size: 34rpx; font-weight: 800; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.product-price { margin-top: 16rpx; color: #e36a3e; font-size: 40rpx; font-weight: 800; }
+.product-location { margin-top: 10rpx; color: #8a9690; font-size: 24rpx; }
+.notice { margin: 22rpx 0; padding: 20rpx 22rpx; border-radius: 18rpx; color: #71501e; background: #fff8e9; font-size: 25rpx; line-height: 1.6; }
+.form-card { padding: 28rpx 24rpx; border-radius: 26rpx; background: #fff; }
+.datetime-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16rpx; }
+.picker-box { min-height: 82rpx; padding: 0 22rpx; border: 2rpx solid #e6ece8; border-radius: 16rpx; background: #fbfcfb; color: #243129; font-size: 28rpx; line-height: 82rpx; box-sizing: border-box; }
 .appointment-input { min-height: 82rpx; line-height: 82rpx; }
 .field-tip { display: block; margin-top: 10rpx; color: #8a9690; font-size: 22rpx; line-height: 1.5; }
+.submit-btn { margin-top: 8rpx; min-height: 84rpx; font-size: 30rpx; }
 </style>

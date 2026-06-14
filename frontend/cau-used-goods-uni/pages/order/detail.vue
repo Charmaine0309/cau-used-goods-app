@@ -12,6 +12,14 @@
       <ProductRow :product="order.product" />
     </view>
 
+    <view class="card seller-card">
+      <view class="seller-avatar">{{ sellerName.slice(0, 1) }}</view>
+      <view class="seller-body">
+        <text class="seller-label">卖家信息</text>
+        <text class="seller-name">{{ sellerName }}</text>
+      </view>
+    </view>
+
     <view class="card info">
       <view class="info-row"><text class="info-label">订单编号</text><text class="info-value">{{ order.id }}</text></view>
       <view class="info-row"><text class="info-label">预约时间</text><text class="info-value">{{ order.meetTime }}</text></view>
@@ -26,11 +34,26 @@
       为保护隐私，联系方式仅在待面交阶段向交易双方展示：{{ order.contact || '后端暂未返回联系方式字段' }}
     </view>
 
+    <view v-if="order.status === 'WAIT_MEET' || order.status === 'COMPLETED'" class="card confirm-card">
+      <view class="confirm-title">交易完成确认</view>
+      <view class="confirm-row">
+        <text>买家确认</text>
+        <text :class="['confirm-state', buyerConfirmed ? 'done' : 'pending']">{{ buyerConfirmed ? '已确认' : '待确认' }}</text>
+      </view>
+      <view class="confirm-row">
+        <text>卖家确认</text>
+        <text :class="['confirm-state', sellerConfirmed ? 'done' : 'pending']">{{ sellerConfirmed ? '已确认' : '待确认' }}</text>
+      </view>
+    </view>
+
     <view class="actions">
       <button v-if="isSeller && order.status === 'PENDING_CONFIRM'" class="btn btn-primary" @click="change('confirm')">确认预约</button>
+      <button v-if="isBuyer && order.status === 'WAIT_MEET' && !buyerConfirmed" class="btn btn-primary" @click="confirmBuyerMeet">确认已面交</button>
       <button v-if="isSeller && order.status === 'WAIT_MEET'" class="btn btn-primary" @click="change('complete')">确认完成交易</button>
       <button v-if="canCancel" class="btn btn-plain" @click="cancel">取消订单</button>
-      <button v-if="order.status === 'COMPLETED' && !order.reviewed && !isSeller" class="btn btn-primary" @click="review">去评价</button>
+      <button v-if="order.status === 'COMPLETED' && !isSeller" class="btn btn-primary" :disabled="hasReviewed" @click="review">
+        {{ hasReviewed ? '已评价' : '去评价' }}
+      </button>
       <button class="btn btn-plain" @click="report">举报交易问题</button>
     </view>
   </view>
@@ -50,7 +73,12 @@ const order = ref()
 const currentUserId = computed(() => String(getUser()?.id || ''))
 const status = computed(() => ORDER_STATUS[order.value?.status] || { label: '', tone: 'muted' })
 const isSeller = computed(() => String(order.value?.sellerId) === currentUserId.value)
+const isBuyer = computed(() => String(order.value?.buyerId) === currentUserId.value)
 const canCancel = computed(() => ['PENDING_CONFIRM', 'WAIT_MEET'].includes(order.value?.status))
+const sellerName = computed(() => order.value?.sellerName || order.value?.sellerNickname || 'CAU 卖家')
+const buyerConfirmed = computed(() => order.value?.status === 'COMPLETED' || uni.getStorageSync(`order-buyer-confirmed-${id}`) === true)
+const sellerConfirmed = computed(() => order.value?.status === 'COMPLETED')
+const hasReviewed = computed(() => order.value?.reviewed === true || uni.getStorageSync(`order-reviewed-${id}`) === true)
 const statusTip = computed(() => ({
   PENDING_CONFIRM: '卖家需在 24 小时内处理预约',
   WAIT_MEET: '请按约定时间在校园内公共区域完成面交',
@@ -68,7 +96,16 @@ onLoad((options) => {
 
 async function load() {
   try {
-    order.value = await tradeService.getOrder(id)
+    const detail = await tradeService.getOrder(id)
+    if (detail?.product?.id && !detail.product.image) {
+      try {
+        const product = await tradeService.getProduct(detail.product.id)
+        detail.product = { ...detail.product, ...product, image: product.image || detail.product.image }
+      } catch (error) {
+        // 商品被锁定或已售时后端可能拒绝公开详情，订单仍然正常展示。
+      }
+    }
+    order.value = detail
   } catch (error) {
     showError(error)
   }
@@ -92,11 +129,18 @@ function cancel() {
 }
 
 function review() {
+  if (hasReviewed.value) return
   navigate('/pages/interaction/review', { orderId: id })
 }
 
 function report() {
   navigate('/pages/interaction/report', { targetType: 'ORDER', targetId: id })
+}
+
+function confirmBuyerMeet() {
+  uni.setStorageSync(`order-buyer-confirmed-${id}`, true)
+  showSuccess('已记录买家确认')
+  load()
 }
 </script>
 
@@ -184,4 +228,57 @@ function report() {
   box-sizing: border-box;
   min-width: 0;
 }
+
+.seller-card {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+
+.seller-avatar {
+  display: flex;
+  width: 78rpx;
+  height: 78rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #edf6f1;
+  color: #23734f;
+  font-weight: 700;
+}
+
+.seller-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.seller-label {
+  color: #8a9690;
+  font-size: 23rpx;
+}
+
+.seller-name {
+  color: #243129;
+  font-size: 29rpx;
+  font-weight: 700;
+}
+
+.confirm-title {
+  margin-bottom: 12rpx;
+  color: #243129;
+  font-size: 29rpx;
+  font-weight: 700;
+}
+
+.confirm-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12rpx 0;
+  color: #66736b;
+  font-size: 25rpx;
+}
+
+.confirm-state.done { color: #23734f; }
+.confirm-state.pending { color: #b27b1f; }
 </style>
