@@ -7,19 +7,19 @@ import (
 	"strings"
 	"time"
 
+	"cau-used-goods-app/backend/internal/admin"
 	"cau-used-goods-app/backend/internal/db"
 	"cau-used-goods-app/backend/internal/message"
-	"cau-used-goods-app/backend/internal/product"
 )
 
 type Service struct {
 	repo    *Repository
-	product *product.Service
 	message *message.Service
+	admin   *admin.Service
 }
 
-func NewService(repo *Repository, productService *product.Service, messageService *message.Service) *Service {
-	return &Service{repo: repo, product: productService, message: messageService}
+func NewService(repo *Repository, messageService *message.Service, adminService *admin.Service) *Service {
+	return &Service{repo: repo, message: messageService, admin: adminService}
 }
 
 type CreateOrderInput struct {
@@ -71,7 +71,7 @@ func (s *Service) Create(ctx context.Context, input CreateOrderInput) (*Order, e
 	}
 
 	err = db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := s.product.LockProduct(ctx, input.ProductID); err != nil {
+		if err := s.repo.LockProduct(ctx, tx, input.ProductID); err != nil {
 			return err
 		}
 		if err := s.repo.Create(ctx, tx, order); err != nil {
@@ -166,7 +166,7 @@ func (s *Service) Cancel(ctx context.Context, input CancelOrderInput) (*Order, e
 
 	now := time.Now().Format("2006-01-02 15:04:05")
 	err = db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := s.product.UnlockProduct(ctx, order.ProductID); err != nil {
+		if err := s.repo.UnlockProduct(ctx, tx, order.ProductID); err != nil {
 			return err
 		}
 		if err := s.repo.UpdateStatus(ctx, tx, input.OrderID, "CANCELED", map[string]interface{}{
@@ -207,18 +207,24 @@ type CompleteOrderInput struct {
 	SellerID uint64
 }
 
-type ExceptionCloseOrderInput struct {
-	OrderID uint64
-	UserID  uint64
-	Reason  string
+type AdminExceptionCloseOrderInput struct {
+	OrderID          uint64
+	AdminID          uint64
+	Reason           string
+	ResponsibleParty string
+	IPAddress        string
+	RelatedType      string
+	RelatedID        uint64
 }
 
 type AdminUpdateOrderStatusInput struct {
-	AdminID   uint64
-	OrderID   uint64
-	Status    string
-	Reason    string
-	IPAddress *string
+	AdminID     uint64
+	OrderID     uint64
+	Status      string
+	Reason      string
+	IPAddress   *string
+	RelatedType string
+	RelatedID   uint64
 }
 
 func (s *Service) Complete(ctx context.Context, input CompleteOrderInput) (*Order, error) {
@@ -238,7 +244,7 @@ func (s *Service) Complete(ctx context.Context, input CompleteOrderInput) (*Orde
 
 	now := time.Now().Format("2006-01-02 15:04:05")
 	err = db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := s.product.MarkProductSold(ctx, order.ProductID); err != nil {
+		if err := s.repo.MarkProductSold(ctx, tx, order.ProductID); err != nil {
 			return err
 		}
 		if err := s.repo.UpdateStatus(ctx, tx, input.OrderID, "COMPLETED", map[string]interface{}{
@@ -268,7 +274,27 @@ func (s *Service) Complete(ctx context.Context, input CompleteOrderInput) (*Orde
 	return s.repo.GetByID(ctx, input.OrderID)
 }
 
-func (s *Service) ExceptionClose(ctx context.Context, input ExceptionCloseOrderInput) (*Order, error) {
+func (s *Service) AdminExceptionClose(ctx context.Context, input AdminExceptionCloseOrderInput) (*Order, error) {
+	input.Reason = strings.TrimSpace(input.Reason)
+	input.ResponsibleParty = strings.ToUpper(strings.TrimSpace(input.ResponsibleParty))
+	input.IPAddress = strings.TrimSpace(input.IPAddress)
+	relatedType, relatedID, err := normalizeAdminRelated(input.RelatedType, input.RelatedID)
+	if err != nil {
+		return nil, err
+	}
+	if input.AdminID == 0 {
+		return nil, fmt.Errorf("adminId is required")
+	}
+	if input.Reason == "" {
+		return nil, fmt.Errorf("reason is required")
+	}
+	if len([]rune(input.Reason)) > 500 {
+		return nil, fmt.Errorf("reason cannot exceed 500 characters")
+	}
+	if input.ResponsibleParty != "BUYER" && input.ResponsibleParty != "SELLER" {
+		return nil, fmt.Errorf("responsibleParty must be BUYER or SELLER")
+	}
+
 	order, err := s.repo.GetByID(ctx, input.OrderID)
 	if err != nil {
 		return nil, err
@@ -276,30 +302,30 @@ func (s *Service) ExceptionClose(ctx context.Context, input ExceptionCloseOrderI
 	if order == nil {
 		return nil, fmt.Errorf("order not found")
 	}
-	if order.BuyerID != input.UserID && order.SellerID != input.UserID {
-		return nil, fmt.Errorf("permission denied")
-	}
 	if order.Status != "PENDING_CONFIRM" && order.Status != "WAIT_MEET" {
 		return nil, fmt.Errorf("order cannot be exception closed")
 	}
 
-	now := time.Now().Format("2006-01-02 15:04:05")
+	closedOrder := AccountStatusClosedOrder{
+		ID:                   order.ID,
+		BuyerID:              order.BuyerID,
+		SellerID:             order.SellerID,
+		ProductID:            order.ProductID,
+		ProductTitleSnapshot: order.ProductTitleSnapshot,
+		ResponsibleParty:     input.ResponsibleParty,
+	}
 	err = db.WithTx(ctx, func(tx *sql.Tx) error {
-		if err := s.product.UnlockProduct(ctx, order.ProductID); err != nil {
+		if err := s.repo.ValidateRelatedRecordTx(ctx, tx, relatedType, relatedID, order.ID); err != nil {
 			return err
 		}
-		if err := s.repo.UpdateStatus(ctx, tx, input.OrderID, "EXCEPTION_CLOSED", map[string]interface{}{
-			"cancel_reason": input.Reason,
-			"cancel_by":     input.UserID,
-			"close_time":    now,
-		}); err != nil {
-			return err
-		}
-		return nil
+		description := fmt.Sprintf("responsibleParty=%s; reason=%s", input.ResponsibleParty, input.Reason)
+		return s.exceptionCloseOrderTx(ctx, tx, closedOrder, input.AdminID, input.Reason, &input.IPAddress, relatedTypePtr(relatedType), relatedIDPtr(relatedID), description)
 	})
 	if err != nil {
 		return nil, err
 	}
+
+	s.notifyOrderExceptionClosed(ctx, input.AdminID, closedOrder, fmt.Sprintf("订单「%s」已由管理员异常关闭，原因：%s", order.ProductTitleSnapshot, input.Reason))
 
 	return s.repo.GetByID(ctx, input.OrderID)
 }
@@ -313,12 +339,16 @@ func (s *Service) AdminUpdateStatus(ctx context.Context, input AdminUpdateOrderS
 	}
 	input.Status = strings.ToUpper(strings.TrimSpace(input.Status))
 	input.Reason = strings.TrimSpace(input.Reason)
+	relatedType, relatedID, err := normalizeAdminRelated(input.RelatedType, input.RelatedID)
+	if err != nil {
+		return nil, err
+	}
 	if input.IPAddress != nil {
 		trimmed := strings.TrimSpace(*input.IPAddress)
 		input.IPAddress = &trimmed
 	}
 	if !isValidAdminOrderStatus(input.Status) {
-		return nil, fmt.Errorf("status must be PENDING_CONFIRM, WAIT_MEET, COMPLETED, CANCELED or EXCEPTION_CLOSED")
+		return nil, fmt.Errorf("status must be PENDING_CONFIRM, WAIT_MEET, COMPLETED or CANCELED; use exception-close for EXCEPTION_CLOSED")
 	}
 	if len([]rune(input.Reason)) > 500 {
 		return nil, fmt.Errorf("reason cannot exceed 500 characters")
@@ -339,13 +369,16 @@ func (s *Service) AdminUpdateStatus(ctx context.Context, input AdminUpdateOrderS
 		updates["confirm_time"] = now
 	case "COMPLETED":
 		updates["finish_time"] = now
-	case "CANCELED", "EXCEPTION_CLOSED":
+	case "CANCELED":
 		updates["cancel_reason"] = input.Reason
 		updates["cancel_by"] = input.AdminID
 		updates["close_time"] = now
 	}
 
 	err = db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := s.repo.ValidateRelatedRecordTx(ctx, tx, relatedType, relatedID, order.ID); err != nil {
+			return err
+		}
 		switch input.Status {
 		case "PENDING_CONFIRM", "WAIT_MEET":
 			if err := s.repo.UpdateProductStatusForAdmin(ctx, tx, order.ProductID, "LOCKED"); err != nil {
@@ -355,7 +388,7 @@ func (s *Service) AdminUpdateStatus(ctx context.Context, input AdminUpdateOrderS
 			if err := s.repo.UpdateProductStatusForAdmin(ctx, tx, order.ProductID, "SOLD"); err != nil {
 				return err
 			}
-		case "CANCELED", "EXCEPTION_CLOSED":
+		case "CANCELED":
 			if err := s.repo.UpdateProductStatusForAdmin(ctx, tx, order.ProductID, "ON_SALE"); err != nil {
 				return err
 			}
@@ -363,11 +396,7 @@ func (s *Service) AdminUpdateStatus(ctx context.Context, input AdminUpdateOrderS
 		if err := s.repo.UpdateStatus(ctx, tx, input.OrderID, input.Status, updates); err != nil {
 			return err
 		}
-		operationType := "UPDATE_ORDER_STATUS"
-		if input.Status == "EXCEPTION_CLOSED" {
-			operationType = "ORDER_EXCEPTION_CLOSE"
-		}
-		return s.repo.CreateAdminLog(ctx, tx, input.AdminID, operationType, "ORDER", input.OrderID, buildStatusDescription(input.Status, input.Reason), input.IPAddress)
+		return s.logAdminActionTx(ctx, tx, input.AdminID, admin.OperationUpdateOrderStatus, admin.TargetTypeOrder, input.OrderID, buildStatusDescription(input.Status, input.Reason), input.IPAddress, relatedTypePtr(relatedType), relatedIDPtr(relatedID))
 	})
 	if err != nil {
 		return nil, err
@@ -375,26 +404,64 @@ func (s *Service) AdminUpdateStatus(ctx context.Context, input AdminUpdateOrderS
 	return s.repo.GetByID(ctx, input.OrderID)
 }
 
-func (s *Service) AdminList(ctx context.Context, status string, page, pageSize int) ([]OrderDetail, int, error) {
-	status = strings.ToUpper(strings.TrimSpace(status))
-	if status == "ALL" {
-		status = ""
+func (s *Service) logAdminActionTx(ctx context.Context, tx *sql.Tx, adminID uint64, operationType, targetType string, targetID uint64, description string, ipAddress *string, relatedType *string, relatedID *uint64) error {
+	if s.admin == nil {
+		return fmt.Errorf("admin logger is not configured")
 	}
-	if status != "" && !isValidAdminOrderStatus(status) {
-		return nil, 0, fmt.Errorf("invalid order status")
+	_, err := s.admin.LogActionTx(ctx, tx, admin.LogActionInput{
+		AdminID:       adminID,
+		OperationType: operationType,
+		TargetType:    targetType,
+		TargetID:      targetID,
+		Description:   &description,
+		IPAddress:     ipAddress,
+		RelatedType:   relatedType,
+		RelatedID:     relatedID,
+	})
+	return err
+}
+
+func (s *Service) exceptionCloseOrderTx(ctx context.Context, tx *sql.Tx, item AccountStatusClosedOrder, adminID uint64, reason string, ipAddress *string, relatedType *string, relatedID *uint64, description string) error {
+	if item.ResponsibleParty == "BUYER" {
+		if err := s.repo.UnlockProduct(ctx, tx, item.ProductID); err != nil {
+			return err
+		}
+	} else {
+		if err := s.repo.OffShelfLockedProduct(ctx, tx, item.ProductID, reason); err != nil {
+			return err
+		}
 	}
-	if page < 1 {
-		page = 1
+	if err := s.repo.UpdateStatus(ctx, tx, item.ID, "EXCEPTION_CLOSED", map[string]interface{}{
+		"cancel_reason": reason,
+		"cancel_by":     adminID,
+		"close_time":    time.Now().Format("2006-01-02 15:04:05"),
+	}); err != nil {
+		return err
 	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 50
+	return s.logAdminActionTx(ctx, tx, adminID, admin.OperationOrderExceptionClose, admin.TargetTypeOrder, item.ID, description, ipAddress, relatedType, relatedID)
+}
+
+func (s *Service) notifyOrderExceptionClosed(ctx context.Context, adminID uint64, item AccountStatusClosedOrder, content string) {
+	if s.message == nil {
+		return
 	}
-	return s.repo.ListAll(ctx, status, page, pageSize)
+	relatedType := message.RelatedTypeOrder
+	for _, receiverID := range []uint64{item.BuyerID, item.SellerID} {
+		_, _ = s.message.Create(ctx, message.CreateMessageInput{
+			ReceiverID:  receiverID,
+			SenderID:    &adminID,
+			MessageType: message.MessageTypeSystemNotice,
+			Title:       "订单异常关闭",
+			Content:     content,
+			RelatedType: &relatedType,
+			RelatedID:   &item.ID,
+		})
+	}
 }
 
 func isValidAdminOrderStatus(status string) bool {
 	switch status {
-	case "PENDING_CONFIRM", "WAIT_MEET", "COMPLETED", "CANCELED", "EXCEPTION_CLOSED":
+	case "PENDING_CONFIRM", "WAIT_MEET", "COMPLETED", "CANCELED":
 		return true
 	default:
 		return false
@@ -402,24 +469,36 @@ func isValidAdminOrderStatus(status string) bool {
 }
 
 func buildStatusDescription(status string, reason string) string {
-	statusText := map[string]string{
-		"PENDING_CONFIRM":  "待确认",
-		"WAIT_MEET":        "待面交",
-		"COMPLETED":        "已完成",
-		"CANCELED":         "已取消",
-		"EXCEPTION_CLOSED": "异常关闭",
-	}[status]
-	if statusText == "" {
-		statusText = status
-	}
-	description := fmt.Sprintf("订单状态更新为%s", statusText)
-	if status == "EXCEPTION_CLOSED" {
-		description = "异常关闭订单"
-	}
+	description := fmt.Sprintf("update order status to %s", status)
 	if reason != "" {
-		description = fmt.Sprintf("%s：%s", description, reason)
+		description = fmt.Sprintf("%s: %s", description, reason)
 	}
 	return description
+}
+
+func normalizeAdminRelated(relatedType string, relatedID uint64) (string, uint64, error) {
+	relatedType = strings.ToUpper(strings.TrimSpace(relatedType))
+	if (relatedType == "") != (relatedID == 0) {
+		return "", 0, fmt.Errorf("relatedType and relatedId must be provided together")
+	}
+	if relatedType != "" && relatedType != admin.TargetTypeReport && relatedType != admin.TargetTypeAppeal {
+		return "", 0, fmt.Errorf("relatedType must be REPORT or APPEAL")
+	}
+	return relatedType, relatedID, nil
+}
+
+func relatedTypePtr(relatedType string) *string {
+	if relatedType == "" {
+		return nil
+	}
+	return &relatedType
+}
+
+func relatedIDPtr(relatedID uint64) *uint64 {
+	if relatedID == 0 {
+		return nil
+	}
+	return &relatedID
 }
 
 func (s *Service) GetByID(ctx context.Context, orderID uint64) (*Order, error) {
@@ -446,6 +525,43 @@ func (s *Service) ListBySeller(ctx context.Context, sellerID uint64, status stri
 	return s.repo.ListBySeller(ctx, sellerID, status, page, pageSize)
 }
 
+func (s *Service) ListAll(ctx context.Context, status string, page, pageSize int) ([]OrderDetail, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	return s.repo.ListAll(ctx, status, page, pageSize)
+}
+
+func (s *Service) CountBlockingOrdersTx(ctx context.Context, tx *sql.Tx, userID uint64) (int, int, int, int, error) {
+	return s.repo.CountBlockingOrdersTx(ctx, tx, userID)
+}
+
+func (s *Service) AutoExceptionClosePendingConfirmByUserTx(ctx context.Context, tx *sql.Tx, userID, adminID uint64, reason string, ipAddress *string, relatedType *string, relatedID *uint64) ([]AccountStatusClosedOrder, error) {
+	if s.admin == nil {
+		return nil, fmt.Errorf("admin logger is not configured")
+	}
+	orders, err := s.repo.ListPendingConfirmByUserTx(ctx, tx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range orders {
+		responsibleParty := "BUYER"
+		if orders[i].SellerID == userID {
+			responsibleParty = "SELLER"
+		}
+		orders[i].ResponsibleParty = responsibleParty
+
+		description := fmt.Sprintf("auto exception close by account status change; responsibleParty=%s; reason=%s", responsibleParty, reason)
+		if err := s.exceptionCloseOrderTx(ctx, tx, orders[i], adminID, reason, ipAddress, relatedType, relatedID, description); err != nil {
+			return nil, err
+		}
+	}
+	return orders, nil
+}
+
 func (s *Service) CancelExpiredOrders(ctx context.Context) (int, error) {
 	orders, err := s.repo.ListExpiredOrders(ctx)
 	if err != nil {
@@ -453,22 +569,27 @@ func (s *Service) CancelExpiredOrders(ctx context.Context) (int, error) {
 	}
 
 	cancelled := 0
-	now := time.Now().Format("2006-01-02 15:04:05")
+	var firstErr error
 	for _, order := range orders {
+		cancelledThisOrder := false
 		err = db.WithTx(ctx, func(tx *sql.Tx) error {
-			if err := s.product.UnlockProduct(ctx, order.ProductID); err != nil {
+			affected, err := s.repo.CancelExpiredOrderTx(ctx, tx, order.ID, order.BuyerID)
+			if err != nil {
 				return err
 			}
-			if err := s.repo.UpdateStatus(ctx, tx, order.ID, "CANCELED", map[string]interface{}{
-				"cancel_reason": "订单超时未确认，系统自动取消",
-				"cancel_by":     order.BuyerID,
-				"close_time":    now,
-			}); err != nil {
-				return err
+			if !affected {
+				return nil
 			}
-			return nil
+			cancelledThisOrder = true
+			return s.repo.UnlockProductIfLocked(ctx, tx, order.ProductID)
 		})
 		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if !cancelledThisOrder {
 			continue
 		}
 
@@ -495,5 +616,5 @@ func (s *Service) CancelExpiredOrders(ctx context.Context) (int, error) {
 
 		cancelled++
 	}
-	return cancelled, nil
+	return cancelled, firstErr
 }

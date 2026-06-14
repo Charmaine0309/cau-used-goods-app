@@ -67,40 +67,39 @@ func (h *Handler) AdminListCategories(c *gin.Context) {
 }
 
 func (h *Handler) AdminCreateCategory(c *gin.Context) {
-	adminID, ok := middleware.CurrentUserID(c)
+	adminID, ok := currentUserID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
 	}
-
 	var req createCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request body")
 		return
 	}
 
+	ipAddress := c.ClientIP()
 	id, err := h.service.CreateCategory(c.Request.Context(), CategoryCreateInput{
+		AdminID:   adminID,
 		Name:      req.Name,
 		ParentID:  req.ParentID,
 		SortOrder: req.SortOrder,
 		Status:    req.Status,
+		IPAddress: &ipAddress,
 	})
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
-	description := "新增标签：" + req.Name
-	_ = h.service.repo.CreateCategoryAdminLog(c.Request.Context(), adminID, "CATEGORY_CREATE", id, description, c.ClientIP())
 	response.Success(c, gin.H{"id": id})
 }
 
 func (h *Handler) AdminUpdateCategory(c *gin.Context) {
-	adminID, ok := middleware.CurrentUserID(c)
+	adminID, ok := currentUserID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
 	}
-
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
@@ -113,28 +112,28 @@ func (h *Handler) AdminUpdateCategory(c *gin.Context) {
 		return
 	}
 
+	ipAddress := c.ClientIP()
 	if err := h.service.UpdateCategory(c.Request.Context(), CategoryUpdateInput{
+		AdminID:   adminID,
 		ID:        id,
 		Name:      req.Name,
 		ParentID:  req.ParentID,
 		SortOrder: req.SortOrder,
 		Status:    req.Status,
+		IPAddress: &ipAddress,
 	}); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
-	description := "编辑标签：" + req.Name
-	_ = h.service.repo.CreateCategoryAdminLog(c.Request.Context(), adminID, "CATEGORY_UPDATE", id, description, c.ClientIP())
 	response.Success(c, gin.H{"id": id})
 }
 
 func (h *Handler) AdminUpdateCategoryStatus(c *gin.Context) {
-	adminID, ok := middleware.CurrentUserID(c)
+	adminID, ok := currentUserID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
 	}
-
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
@@ -147,17 +146,11 @@ func (h *Handler) AdminUpdateCategoryStatus(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.UpdateCategoryStatus(c.Request.Context(), id, req.Status); err != nil {
+	ipAddress := c.ClientIP()
+	if err := h.service.UpdateCategoryStatus(c.Request.Context(), adminID, id, req.Status, &ipAddress, ""); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
-	operationType := "CATEGORY_DISABLE"
-	description := "停用标签"
-	if req.Status == "ENABLED" {
-		operationType = "CATEGORY_ENABLE"
-		description = "启用标签"
-	}
-	_ = h.service.repo.CreateCategoryAdminLog(c.Request.Context(), adminID, operationType, id, description, c.ClientIP())
 	response.Success(c, gin.H{
 		"id":     id,
 		"status": req.Status,
@@ -165,23 +158,22 @@ func (h *Handler) AdminUpdateCategoryStatus(c *gin.Context) {
 }
 
 func (h *Handler) AdminDeleteCategory(c *gin.Context) {
-	adminID, ok := middleware.CurrentUserID(c)
+	adminID, ok := currentUserID(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
 	}
-
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid category id")
 		return
 	}
 
-	if err := h.service.UpdateCategoryStatus(c.Request.Context(), id, "DISABLED"); err != nil {
+	ipAddress := c.ClientIP()
+	if err := h.service.UpdateCategoryStatus(c.Request.Context(), adminID, id, "DISABLED", &ipAddress, "DELETE_CATEGORY"); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
 	}
-	_ = h.service.repo.CreateCategoryAdminLog(c.Request.Context(), adminID, "CATEGORY_DISABLE", id, "停用标签", c.ClientIP())
 	response.Success(c, gin.H{
 		"id":     id,
 		"status": "DISABLED",
@@ -253,6 +245,66 @@ func (h *Handler) ListProducts(c *gin.Context) {
 	}
 
 	if !isValidProductStatus(status) {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid status")
+		return
+	}
+
+	if !isValidProductSort(sort) {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid sort")
+		return
+	}
+
+	result, err := h.service.ListProducts(c.Request.Context(), ProductListInput{
+		Keyword:        keyword,
+		CategoryID:     categoryID,
+		ConditionLevel: conditionLevel,
+		Status:         status,
+		MinPrice:       minPrice,
+		MaxPrice:       maxPrice,
+		Sort:           sort,
+		Page:           page,
+		PageSize:       pageSize,
+	})
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, response.CodeInternal, err.Error())
+		return
+	}
+
+	response.Success(c, result)
+}
+
+func (h *Handler) AdminListProducts(c *gin.Context) {
+	keyword := c.Query("keyword")
+	conditionLevel := c.Query("conditionLevel")
+	status := c.Query("status")
+	sort := c.DefaultQuery("sort", "newest")
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
+
+	var categoryID uint64
+	if v := c.Query("categoryId"); v != "" {
+		parsed, _ := strconv.ParseUint(v, 10, 64)
+		categoryID = parsed
+	}
+
+	var minPrice *float64
+	if v := c.Query("minPrice"); v != "" {
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err == nil {
+			minPrice = &parsed
+		}
+	}
+
+	var maxPrice *float64
+	if v := c.Query("maxPrice"); v != "" {
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err == nil {
+			maxPrice = &parsed
+		}
+	}
+
+	if status != "" && !isValidProductStatus(status) {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid status")
 		return
 	}
@@ -397,8 +449,10 @@ type updateProductStatusRequest struct {
 }
 
 type adminUpdateProductStatusRequest struct {
-	Status string `json:"status" binding:"required"`
-	Reason string `json:"reason"`
+	Status      string `json:"status" binding:"required"`
+	Reason      string `json:"reason"`
+	RelatedType string `json:"relatedType"`
+	RelatedID   uint64 `json:"relatedId"`
 }
 
 func (h *Handler) UpdateProductStatus(c *gin.Context) {
@@ -457,11 +511,13 @@ func (h *Handler) AdminUpdateProductStatus(c *gin.Context) {
 
 	ipAddress := c.ClientIP()
 	if err := h.service.AdminUpdateProductStatus(c.Request.Context(), AdminUpdateProductStatusInput{
-		AdminID:   adminID,
-		ProductID: productID,
-		Status:    req.Status,
-		Reason:    req.Reason,
-		IPAddress: &ipAddress,
+		AdminID:     adminID,
+		ProductID:   productID,
+		Status:      req.Status,
+		Reason:      req.Reason,
+		IPAddress:   &ipAddress,
+		RelatedType: req.RelatedType,
+		RelatedID:   req.RelatedID,
 	}); err != nil {
 		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
 		return
@@ -538,7 +594,7 @@ func currentUserID(c *gin.Context) (uint64, bool) {
 
 func isValidProductStatus(status string) bool {
 	switch status {
-	case "ON_SALE", "OFF_SHELF", "LOCKED", "SOLD", "DELETED", "ALL":
+	case "ON_SALE":
 		return true
 	default:
 		return false

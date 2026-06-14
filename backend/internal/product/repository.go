@@ -100,7 +100,15 @@ type CreateCategoryInput struct {
 }
 
 func (r *Repository) CreateCategory(ctx context.Context, input CreateCategoryInput) (uint64, error) {
-	result, err := r.db.ExecContext(ctx, `
+	return r.CreateCategoryTx(ctx, nil, input)
+}
+
+func (r *Repository) CreateCategoryTx(ctx context.Context, tx *sql.Tx, input CreateCategoryInput) (uint64, error) {
+	execer := productExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, `
 		INSERT INTO categories (name, parent_id, sort_order, status)
 		VALUES (?, ?, ?, ?)
 	`, input.Name, input.ParentID, input.SortOrder, input.Status)
@@ -124,7 +132,15 @@ type UpdateCategoryInput struct {
 }
 
 func (r *Repository) UpdateCategory(ctx context.Context, input UpdateCategoryInput) error {
-	result, err := r.db.ExecContext(ctx, `
+	return r.UpdateCategoryTx(ctx, nil, input)
+}
+
+func (r *Repository) UpdateCategoryTx(ctx context.Context, tx *sql.Tx, input UpdateCategoryInput) error {
+	execer := productExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, `
 		UPDATE categories
 		SET name = ?, parent_id = ?, sort_order = ?, status = ?, update_time = CURRENT_TIMESTAMP
 		WHERE id = ?
@@ -136,7 +152,15 @@ func (r *Repository) UpdateCategory(ctx context.Context, input UpdateCategoryInp
 }
 
 func (r *Repository) UpdateCategoryStatus(ctx context.Context, id uint64, status string) error {
-	result, err := r.db.ExecContext(ctx, `
+	return r.UpdateCategoryStatusTx(ctx, nil, id, status)
+}
+
+func (r *Repository) UpdateCategoryStatusTx(ctx context.Context, tx *sql.Tx, id uint64, status string) error {
+	execer := productExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, `
 		UPDATE categories
 		SET status = ?, update_time = CURRENT_TIMESTAMP
 		WHERE id = ?
@@ -145,17 +169,6 @@ func (r *Repository) UpdateCategoryStatus(ctx context.Context, id uint64, status
 		return err
 	}
 	return checkAffected(result)
-}
-
-func (r *Repository) CreateCategoryAdminLog(ctx context.Context, adminID uint64, operationType string, categoryID uint64, description string, ipAddress string) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, ip_address, create_time)
-		VALUES (?, ?, 'CATEGORY', ?, ?, NULLIF(?, ''), NOW())
-	`, adminID, operationType, categoryID, description, ipAddress)
-	if err != nil {
-		return fmt.Errorf("create category admin log: %w", err)
-	}
-	return nil
 }
 
 type CreateProductInput struct {
@@ -226,17 +239,11 @@ func (r *Repository) ListProducts(ctx context.Context, input ListProductsInput) 
 	if input.PageSize > 50 {
 		input.PageSize = 50
 	}
-	if input.Status == "" {
-		input.Status = "ON_SALE"
-	}
+	input.Status = "ON_SALE"
 
 	where := ` WHERE is_deleted = 0 `
-	args := []any{}
-
-	if input.Status != "ALL" {
-		where += " AND status = ? "
-		args = append(args, input.Status)
-	}
+	args := []any{input.Status}
+	where += " AND status = ? "
 
 	if input.Keyword != "" {
 		where += " AND (title LIKE ? OR description LIKE ?) "
@@ -331,7 +338,29 @@ func (r *Repository) ListProducts(ctx context.Context, input ListProductsInput) 
 		Total:    total,
 	}, nil
 }
+func (r *Repository) IncrementViewCount(ctx context.Context, productID uint64) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE products
+		SET view_count = view_count + 1,
+		    update_time = CURRENT_TIMESTAMP
+		WHERE id = ?
+		  AND is_deleted = 0
+		  AND status = 'ON_SALE'
+	`, productID)
+	if err != nil {
+		return fmt.Errorf("increment product view count: %w", err)
+	}
 
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check increment product view count result: %w", err)
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
 func (r *Repository) GetProductByID(ctx context.Context, id uint64) (*Product, error) {
 	var p Product
 	var desc sql.NullString
@@ -344,7 +373,7 @@ func (r *Repository) GetProductByID(ctx context.Context, id uint64) (*Product, e
 		       price, condition_level, meet_location, status, view_count,
 		       favorite_count, DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s')
 		FROM products
-		WHERE id = ? AND is_deleted = 0 AND status <> 'DELETED'
+		WHERE id = ? AND is_deleted = 0 AND status = 'ON_SALE'
 	`, id).Scan(
 		&p.ID, &p.SellerID, &p.CategoryID, &p.Title, &desc, &originalPrice,
 		&p.Price, &condition, &location, &p.Status, &p.ViewCount,
@@ -518,22 +547,19 @@ func (r *Repository) UpdateProductStatus(ctx context.Context, productID uint64, 
 }
 
 func (r *Repository) AdminUpdateProductStatus(ctx context.Context, input AdminUpdateProductStatusInput) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin update product status tx: %w", err)
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
+	return r.AdminUpdateProductStatusTx(ctx, nil, input)
+}
 
+func (r *Repository) AdminUpdateProductStatusTx(ctx context.Context, tx *sql.Tx, input AdminUpdateProductStatusInput) error {
 	isDeleted := 0
 	if input.Status == "DELETED" {
 		isDeleted = 1
 	}
-	result, err := tx.ExecContext(ctx, `
+	execer := productExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, `
 		UPDATE products
 		SET status = ?,
 		    off_shelf_reason = CASE WHEN ? = 'OFF_SHELF' THEN ? ELSE NULL END,
@@ -551,22 +577,86 @@ func (r *Repository) AdminUpdateProductStatus(ctx context.Context, input AdminUp
 	if affected == 0 {
 		return fmt.Errorf("product not found")
 	}
+	return nil
+}
 
-	description := fmt.Sprintf("update product status to %s", input.Status)
-	if input.Reason != "" {
-		description = fmt.Sprintf("%s: %s", description, input.Reason)
+type productExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
+func (r *Repository) OffShelfOnSaleBySellerTx(ctx context.Context, tx *sql.Tx, sellerID uint64, reason string) ([]uint64, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id
+		FROM products
+		WHERE seller_id = ?
+		  AND is_deleted = 0
+		  AND status = 'ON_SALE'
+		ORDER BY id ASC
+		FOR UPDATE
+	`, sellerID)
+	if err != nil {
+		return nil, fmt.Errorf("list seller on-sale products: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO admin_logs (admin_id, operation_type, target_type, target_id, description, ip_address, create_time)
-		VALUES (?, 'UPDATE_PRODUCT_STATUS', 'PRODUCT', ?, ?, ?, NOW())
-	`, input.AdminID, input.ProductID, description, input.IPAddress); err != nil {
-		return fmt.Errorf("create product status admin log: %w", err)
+	defer rows.Close()
+
+	var productIDs []uint64
+	for rows.Next() {
+		var productID uint64
+		if err := rows.Scan(&productID); err != nil {
+			return nil, fmt.Errorf("scan seller on-sale product: %w", err)
+		}
+		productIDs = append(productIDs, productID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate seller on-sale products: %w", err)
+	}
+	if len(productIDs) == 0 {
+		return productIDs, nil
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit update product status tx: %w", err)
+	_, err = tx.ExecContext(ctx, `
+		UPDATE products
+		SET status = 'OFF_SHELF',
+		    off_shelf_reason = ?,
+		    update_time = CURRENT_TIMESTAMP
+		WHERE seller_id = ?
+		  AND is_deleted = 0
+		  AND status = 'ON_SALE'
+	`, reason, sellerID)
+	if err != nil {
+		return nil, fmt.Errorf("off shelf seller products: %w", err)
 	}
-	committed = true
+	return productIDs, nil
+}
+
+func (r *Repository) ValidateRelatedRecordTx(ctx context.Context, tx *sql.Tx, relatedType string, relatedID, productID uint64) error {
+	if relatedType == "" {
+		return nil
+	}
+	if tx == nil {
+		return fmt.Errorf("transaction is required")
+	}
+
+	var query string
+	var args []interface{}
+	switch relatedType {
+	case "REPORT":
+		query = "SELECT COUNT(*) FROM reports WHERE id = ? AND target_type = 'PRODUCT' AND target_id = ?"
+		args = []interface{}{relatedID, productID}
+	case "APPEAL":
+		query = "SELECT COUNT(*) FROM appeals WHERE id = ? AND target_type = 'PRODUCT' AND target_id = ?"
+		args = []interface{}{relatedID, productID}
+	default:
+		return fmt.Errorf("relatedType must be REPORT or APPEAL")
+	}
+
+	var count int
+	if err := tx.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return fmt.Errorf("check related record: %w", err)
+	}
+	if count == 0 {
+		return fmt.Errorf("related record not found")
+	}
 	return nil
 }
 

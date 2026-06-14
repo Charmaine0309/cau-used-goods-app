@@ -33,23 +33,23 @@ backend/cmd/server/main.go
 
 改动内容：
 
-- 提前初始化 `productRepo`、`productService`、`productHandler`。
-- 将 `productService` 注入订单模块：
+- 提前初始化 `adminService`、`messageService`、`productService` 等依赖。
+- 订单模块现在直接使用自身 repository 的商品状态 Tx 方法，订单状态和商品状态在同一个事务内完成，不再注入 `productService`：
 
 ```go
-orderService := order.NewService(orderRepo, productService)
+orderService := order.NewService(orderRepo, messageService, adminService)
 ```
 
-- 将数据库连接和敏感词服务注入举报模块：
+- 将敏感词、消息和管理员日志服务注入举报模块：
 
 ```go
-reportService := report.NewService(reportRepo, db.DB(), sensitiveService)
+reportService := report.NewService(reportRepo, sensitiveService, messageService, adminService)
 ```
 
 改动目的：
 
-- 订单模块需要和商品模块联动，支持下单锁定商品、取消订单恢复商品、完成订单标记售出等状态流转。
-- 举报模块需要使用数据库事务能力，并复用敏感词检测能力，保证举报内容审核逻辑和商品内容审核逻辑一致。
+- 订单模块需要和商品状态联动，支持下单锁定商品、取消订单恢复商品、完成订单标记售出等状态流转，并保证同事务一致。
+- 举报模块复用敏感词检测能力，处理举报后写入管理员日志并通知举报人；具体用户、商品、订单处置由对应模块接口执行。
 
 ### 2.2 评价接口路由参数修正
 

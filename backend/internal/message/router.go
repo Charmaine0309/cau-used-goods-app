@@ -2,9 +2,9 @@ package message
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware gin.HandlerFunc) {
+func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware, readableMiddleware gin.HandlerFunc) {
 	group := r.Group("/messages")
-	group.Use(authMiddleware)
+	group.Use(authMiddleware, readableMiddleware)
 	{
 		group.GET("", handler.List)
 		group.GET("/unread-count", handler.UnreadCount)

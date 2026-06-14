@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <view class="page">
     <view class="page-title">风险处理</view>
 
@@ -105,6 +105,7 @@ import {
 } from '../../api/admin'
 import { getProductById } from '../../api/product'
 import { normalizeImage } from '../../utils/product-format'
+import { displayRelatedUserName } from '../../utils/user-format'
 
 const activeMode = ref('REPORT')
 const activeTarget = ref('ALL')
@@ -321,8 +322,8 @@ const goProduct = (id) => {
 }
 
 const actorName = (item) => {
-  if (activeMode.value === 'REPORT') return item.reporterNickname || `用户${item.reporterId}`
-  return item.appellantNickname || `用户${item.appellantId}`
+  if (activeMode.value === 'REPORT') return displayRelatedUserName(item, 'reporter', `用户${item.reporterId}`)
+  return displayRelatedUserName(item, 'appellant', `用户${item.appellantId}`)
 }
 
 const shortTime = (value) => {
@@ -840,3 +841,4 @@ const handleCurrent = async (id, status) => {
   color: #fff;
 }
 </style>
+

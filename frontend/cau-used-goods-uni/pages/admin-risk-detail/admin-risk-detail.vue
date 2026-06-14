@@ -28,6 +28,15 @@
         <text class="target-arrow">›</text>
       </view>
 
+      <view v-else-if="targetManageUrl" class="target-product" @click="goTargetManage">
+        <view class="target-image placeholder">{{ targetText(item.targetType) }}</view>
+        <view class="target-main">
+          <view class="target-title">查看{{ targetText(item.targetType) }}管理</view>
+          <view class="target-meta">{{ targetText(item.targetType) }} #{{ item.targetId }}</view>
+        </view>
+        <text class="target-arrow">›</text>
+      </view>
+
       <view class="section-title">具体信息</view>
       <view class="detail-row"><text>对象类型</text><text>{{ targetText(item.targetType) }}</text></view>
       <view class="detail-row"><text>对象 ID</text><text>#{{ item.targetId }}</text></view>
@@ -79,6 +88,7 @@ import {
 } from '../../api/admin'
 import { getProductById } from '../../api/product'
 import { normalizeImage } from '../../utils/product-format'
+import { displayRelatedUserName } from '../../utils/user-format'
 
 const mode = ref('REPORT')
 const id = ref(0)
@@ -93,6 +103,14 @@ const reasonOptions = computed(() => mode.value === 'REPORT'
   : ['申诉材料不足', '原举报处理结论无误', '未提供有效证明', '申诉理由与处理结果无关', '存在重复申诉'])
 
 const targetProduct = computed(() => item.value?.targetType === 'PRODUCT' ? product.value : null)
+const targetManageUrl = computed(() => {
+  if (!item.value) return ''
+  const map = {
+    USER: '/pages/admin-users/admin-users',
+    ORDER: '/pages/admin-orders/admin-orders'
+  }
+  return map[item.value.targetType] || ''
+})
 
 onLoad((query) => {
   mode.value = String(query.mode || 'REPORT').toUpperCase()
@@ -130,14 +148,21 @@ const statusText = (status) => ({ PENDING: '待处理', PROCESSING: '处理中',
 const reasonText = (reasonType) => ({ FAKE: '虚假信息', FRAUD: '疑似诈骗', PROHIBITED: '违规商品', INAPPROPRIATE: '不当内容', HARASSMENT: '骚扰行为', OTHER: '其他原因' }[reasonType] || reasonType || '举报')
 const itemTitle = (record) => mode.value === 'REPORT' ? reasonText(record.reasonType) : (record.reason || '申诉')
 const itemDescription = (record) => record.description || record.reason || '暂无补充说明'
-const actorName = (record) => mode.value === 'REPORT' ? (record.reporterNickname || `用户${record.reporterId}`) : (record.appellantNickname || `用户${record.appellantId}`)
+const actorName = (record) => mode.value === 'REPORT'
+  ? displayRelatedUserName(record, 'reporter', `用户${record.reporterId}`)
+  : displayRelatedUserName(record, 'appellant', `用户${record.appellantId}`)
 const shortTime = (value) => value ? String(value).replace('T', ' ').slice(0, 16) : ''
 const canHandle = (status) => ['PENDING', 'PROCESSING'].includes(status)
 const productCover = (record) => normalizeImage(record?.images?.[0] || '')
 const productStatusText = (status) => ({ ON_SALE: '在售', OFF_SHELF: '已下架', LOCKED: '交易锁定', SOLD: '已售出', DELETED: '已删除' }[status] || status || '未知')
 
 const previewImage = (current, urls) => uni.previewImage({ current, urls: urls.map((url) => normalizeImage(url)) })
-const goProduct = (productId) => productId && uni.navigateTo({ url: `/pages/admin-product-status/admin-product-status?id=${productId}` })
+const relatedQuery = () => `relatedType=${mode.value}&relatedId=${id.value}`
+const goProduct = (productId) => productId && uni.navigateTo({ url: `/pages/admin-product-status/admin-product-status?id=${productId}&${relatedQuery()}` })
+const goTargetManage = () => {
+  if (!targetManageUrl.value) return
+  uni.navigateTo({ url: `${targetManageUrl.value}?${relatedQuery()}` })
+}
 const openReasonModal = () => { reasonModal.visible = true; reasonModal.reason = ''; reasonModal.note = '' }
 const closeReasonModal = () => { if (!submitting.value) reasonModal.visible = false }
 const buildHandleResult = (reason, note) => {

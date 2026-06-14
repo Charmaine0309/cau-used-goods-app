@@ -191,6 +191,8 @@ RESOLVED
 }
 ```
 
+说明：该接口只处理举报案件状态，不接受 `accountStatus`。如需封禁用户、下架商品或关闭订单，应调用对应后台状态接口，并传入 `relatedType=REPORT`、`relatedId=举报ID`。
+
 ### 6.2 处理申诉
 
 ```http
@@ -219,6 +221,8 @@ CLOSED
 }
 ```
 
+说明：该接口只处理申诉案件状态，不接受 `accountStatus`。如需恢复用户或商品状态，应调用对应后台状态接口，并传入 `relatedType=APPEAL`、`relatedId=申诉ID`。
+
 ## 七、新增管理员后续处理接口
 
 ### 7.1 修改账号状态
@@ -238,8 +242,7 @@ PUT /admin/users/:id/status
 ```text
 NORMAL
 DISABLED
-CANCELED
-DELETED
+BANNED
 ```
 
 请求体：
@@ -247,17 +250,21 @@ DELETED
 ```json
 {
   "accountStatus": "DISABLED",
-  "reason": "举报成立，禁用账号"
+  "reason": "举报成立，禁用账号",
+  "relatedType": "REPORT",
+  "relatedId": 123
 }
 ```
 
 说明：
 
-- `DELETED` 为逻辑删除。
-- 设置 `DELETED` 时，会同时设置 `is_deleted = 1`。
 - 管理员不能通过该接口修改自己的账号状态。
 - 管理员账号不能通过该接口被修改状态。
-- 操作写入 `admin_logs`。
+- 目标用户作为卖家或买家存在 `WAIT_MEET` 订单时，禁用/封禁失败；后端会按角色返回明细提示，前端应提示管理员先人工处理待面交订单，此时不会修改用户状态、不会异常关闭订单，也不会下架商品。
+- 目标用户作为卖家或买家只存在 `PENDING_CONFIRM` 订单时，禁用/封禁继续执行；系统在同一事务内自动将这些待确认订单改为 `EXCEPTION_CLOSED`，并按角色处理商品状态。
+- `relatedType/relatedId` 可选；管理员自行巡查发现问题时不传，基于举报/申诉处置时传 `REPORT/APPEAL + 案件ID`。
+- 用户状态变更、待确认订单异常关闭、相关商品状态处理、自动下架用户在售商品和 `admin_logs` 写入同事务；禁用/封禁成功后，只有父操作传入 `relatedType/relatedId` 时，自动关闭订单日志和自动下架商品日志才会继承同一组关联来源。
+- 事务提交后发送系统消息：受影响订单买卖双方收到订单异常关闭消息，目标用户收到账号状态变更消息；消息关联具体订单或用户，不继承举报/申诉作为用户侧消息关联对象。
 
 ### 7.2 修改商品状态
 
@@ -286,7 +293,9 @@ DELETED
 ```json
 {
   "status": "OFF_SHELF",
-  "reason": "举报成立，下架商品"
+  "reason": "举报成立，下架商品",
+  "relatedType": "REPORT",
+  "relatedId": 123
 }
 ```
 
@@ -295,7 +304,8 @@ DELETED
 - `DELETED` 为逻辑删除。
 - 设置 `DELETED` 时，会同时设置 `is_deleted = 1`。
 - 设置 `OFF_SHELF` 时，会记录 `off_shelf_reason`。
-- 操作写入 `admin_logs`。
+- `relatedType/relatedId` 可选；传入时只允许 `REPORT` 或 `APPEAL`，并校验案件目标为当前商品。
+- 业务变更和 `admin_logs` 写入同事务。
 
 ### 7.3 修改订单状态
 
@@ -316,15 +326,16 @@ PENDING_CONFIRM
 WAIT_MEET
 COMPLETED
 CANCELED
-EXCEPTION_CLOSED
 ```
 
 请求体：
 
 ```json
 {
-  "status": "EXCEPTION_CLOSED",
-  "reason": "举报成立，管理员异常关闭订单"
+  "status": "CANCELED",
+  "reason": "管理员取消订单",
+  "relatedType": "REPORT",
+  "relatedId": 123
 }
 ```
 
@@ -332,25 +343,21 @@ EXCEPTION_CLOSED
 
 - 修改为 `WAIT_MEET` 时，写入 `confirm_time`。
 - 修改为 `COMPLETED` 时，写入 `finish_time`，并同步商品为 `SOLD`。
-- 修改为 `CANCELED` 或 `EXCEPTION_CLOSED` 时，写入 `cancel_reason`、`cancel_by`、`close_time`，并同步商品为 `ON_SALE`。
+- 修改为 `CANCELED` 时，写入 `cancel_reason`、`cancel_by`、`close_time`，并同步商品为 `ON_SALE`。
 - 修改为 `PENDING_CONFIRM` 或 `WAIT_MEET` 时，商品同步为 `LOCKED`。
-- 操作写入 `admin_logs`。
+- `relatedType/relatedId` 可选；传入时只允许 `REPORT` 或 `APPEAL`，并校验案件目标为当前订单。
+- 业务变更、关联商品状态变化和 `admin_logs` 写入同事务。
+- `EXCEPTION_CLOSED` 不允许通过该通用状态接口设置；管理员异常关闭订单必须使用 `POST /admin/orders/:id/exception-close`，并传入责任方 `responsibleParty=BUYER/SELLER`。
 
-## 八、管理员超时订单清理权限调整
+## 八、超时订单清理调整
 
-原接口：
+原管理员接口已移除：
 
 ```http
 POST /admin/orders/cleanup-expired
 ```
 
-调整后权限：
-
-```text
-登录 + 管理员
-```
-
-该接口原先只挂登录校验，现在已补充管理员权限校验。
+超时未确认订单现在由后端服务启动的定时任务自动清理，每 1 分钟执行一次。清理时使用数据库时间判断 `expire_time < NOW()`，取消订单的 SQL 带 `status='PENDING_CONFIRM'` 条件，并通过 `RowsAffected=1` 判断是否由当前执行者成功处理；只有成功处理的订单才会继续解锁商品和发送通知，避免并发或多实例部署时重复处理。
 
 ## 九、涉及代码位置
 
@@ -371,7 +378,7 @@ backend/scripts/sql/schema.sql
 
 当前相关业务对象均不做物理删除：
 
-- 用户 `account_status = DELETED` 且 `is_deleted = 1`。
+- 用户主动注销使用 `account_status = CANCELED` 且 `is_deleted = 1`。
 - 商品 `status = DELETED` 且 `is_deleted = 1`。
 - 举报、申诉、订单只通过状态变化保留追溯记录。
 

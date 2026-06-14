@@ -32,8 +32,8 @@
         <view v-else class="product-image placeholder">商品</view>
         <view class="product-main">
           <view class="price">￥{{ money(item.productPriceSnapshot) }}</view>
-          <view class="meta">买家：{{ item.buyerNickname || `用户${item.buyerId}` }}</view>
-          <view class="meta">卖家：{{ item.sellerNickname || `用户${item.sellerId}` }}</view>
+          <view class="meta">买家：{{ orderUserName(item, 'buyer') }}</view>
+          <view class="meta">卖家：{{ orderUserName(item, 'seller') }}</view>
         </view>
       </view>
 
@@ -53,6 +53,13 @@
       <view class="reason-sheet" @click.stop>
         <view class="sheet-title">异常关闭订单</view>
         <view class="sheet-sub">订单 #{{ closeModal.order?.id || '' }}</view>
+        <view class="party-row">
+          <view class="party-label">责任方</view>
+          <view class="party-options">
+            <view :class="['party-chip', closeModal.responsibleParty === 'BUYER' ? 'active' : '']" @click="closeModal.responsibleParty = 'BUYER'">买家</view>
+            <view :class="['party-chip', closeModal.responsibleParty === 'SELLER' ? 'active' : '']" @click="closeModal.responsibleParty = 'SELLER'">卖家</view>
+          </view>
+        </view>
         <view class="reason-list">
           <view
             v-for="reason in closeReasons"
@@ -75,15 +82,18 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
-import { getAdminOrders, updateAdminOrderStatus } from '../../api/admin'
+import { onLoad, onShow } from '@dcloudio/uni-app'
+import { exceptionCloseAdminOrder, getAdminOrders } from '../../api/admin'
 import { normalizeImage } from '../../utils/product-format'
+import { displayRelatedUserName } from '../../utils/user-format'
 
 const loading = ref(false)
 const submitting = ref(false)
 const activeStatus = ref('ALL')
 const orders = ref([])
-const closeModal = reactive({ visible: false, order: null, reason: '', note: '' })
+const relatedType = ref('')
+const relatedId = ref(0)
+const closeModal = reactive({ visible: false, order: null, reason: '', note: '', responsibleParty: 'SELLER' })
 
 const statusFilters = [
   { label: '全部', value: 'ALL' },
@@ -113,6 +123,11 @@ const load = async () => {
   }
 }
 
+onLoad((query) => {
+  relatedType.value = String(query.relatedType || '').toUpperCase()
+  relatedId.value = Number(query.relatedId || 0)
+})
+
 onShow(load)
 
 const selectStatus = (status) => { activeStatus.value = status }
@@ -122,12 +137,14 @@ const canExceptionClose = (status) => ['PENDING_CONFIRM', 'WAIT_MEET'].includes(
 const money = (value) => Number(value || 0).toFixed(2)
 const productImage = (item) => normalizeImage(item?.productImage || '')
 const formatTime = (value) => value ? String(value).replace('T', ' ').replace(/\+\d{2}:\d{2}$/, '').slice(0, 16) : ''
+const orderUserName = (item, role) => displayRelatedUserName(item, role, `用户${item?.[`${role}Id`] || ''}`)
 
 const openCloseModal = (order) => {
   closeModal.visible = true
   closeModal.order = order
   closeModal.reason = ''
   closeModal.note = ''
+  closeModal.responsibleParty = 'SELLER'
 }
 
 const closeCloseModal = () => {
@@ -148,7 +165,12 @@ const submitExceptionClose = async () => {
   if (!closeModal.order || submitting.value) return
   submitting.value = true
   try {
-    await updateAdminOrderStatus(closeModal.order.id, 'EXCEPTION_CLOSED', buildReason())
+    const payload = { reason: buildReason(), responsibleParty: closeModal.responsibleParty }
+    if (relatedType.value && relatedId.value) {
+      payload.relatedType = relatedType.value
+      payload.relatedId = relatedId.value
+    }
+    await exceptionCloseAdminOrder(closeModal.order.id, payload)
     uni.showToast({ title: '已异常关闭', icon: 'success' })
     closeModal.visible = false
     await load()
@@ -191,6 +213,11 @@ const submitExceptionClose = async () => {
 .reason-sheet { width: 100%; padding: 30rpx 28rpx 36rpx; border-radius: 28rpx 28rpx 0 0; background: #fff; box-sizing: border-box; }
 .sheet-title { font-size: 34rpx; font-weight: 700; color: #1f2933; }
 .sheet-sub { margin-top: 8rpx; color: #98a2b3; font-size: 24rpx; }
+.party-row { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-top: 24rpx; }
+.party-label { color: #475467; font-size: 26rpx; font-weight: 700; }
+.party-options { display: flex; gap: 14rpx; }
+.party-chip { padding: 12rpx 26rpx; border-radius: 999rpx; background: #f8fafc; color: #667085; font-size: 24rpx; border: 2rpx solid transparent; }
+.party-chip.active { border-color: #17a84b; background: #f0fdf4; color: #16a34a; font-weight: 700; }
 .reason-list { display: flex; flex-wrap: wrap; gap: 14rpx; margin-top: 26rpx; }
 .reason-chip { padding: 14rpx 18rpx; border-radius: 999rpx; background: #f8fafc; color: #475467; font-size: 24rpx; border: 2rpx solid transparent; }
 .reason-chip.active { border-color: #17a84b; background: #f0fdf4; color: #16a34a; font-weight: 700; }

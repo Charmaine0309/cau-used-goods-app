@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
 
@@ -15,25 +16,36 @@ const (
 	ContextRole   = "role"
 )
 
-func Auth(secret string) gin.HandlerFunc {
+func Auth(db *sql.DB, secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "missing authorization header")
+			response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未提供登录凭证")
 			c.Abort()
 			return
 		}
 
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
-			response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "invalid authorization header")
+			response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "登录凭证格式不正确")
 			c.Abort()
 			return
 		}
 
 		claims, err := jwtutil.Parse(secret, parts[1])
 		if err != nil {
-			response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "invalid or expired token")
+			response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "登录凭证无效或已过期")
+			c.Abort()
+			return
+		}
+		if claims.TokenType != "" && claims.TokenType != jwtutil.TokenTypeAccess {
+			response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "凭证不能用于访问业务接口")
+			c.Abort()
+			return
+		}
+		var tokenVersion int
+		if err := db.QueryRowContext(c.Request.Context(), `SELECT token_version FROM users WHERE id = ? LIMIT 1`, claims.UserID).Scan(&tokenVersion); err != nil || tokenVersion != claims.TokenVersion {
+			response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "登录凭证已失效")
 			c.Abort()
 			return
 		}

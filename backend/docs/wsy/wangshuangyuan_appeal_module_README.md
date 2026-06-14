@@ -17,7 +17,7 @@
 - 用户查看自己的申诉。
 - 管理员查看全部申诉。
 - 管理员处理申诉。
-- 申诉通过后联动恢复商品或账号。
+- 申诉通过后记录处理结论；商品、账号或订单状态恢复由对应后台接口单独执行。
 - 处理后写入站内消息通知申诉人。
 - 处理后写入管理员操作日志。
 
@@ -244,7 +244,6 @@ POST /admin/appeals/:id/handle
 ```text
 APPROVED
 REJECTED
-CLOSED
 ```
 
 业务规则：
@@ -253,9 +252,9 @@ CLOSED
 - 处理后写入 `handle_result`、`handler_id`、`handle_time`。
 - 处理后写入 `admin_logs`。
 - 处理后通过 `messages` 通知申诉人。
-- `APPROVED` 时执行联动恢复逻辑。
+- `APPROVED` 只表示申诉成立，不自动恢复商品、账号或订单状态。
 
-## 五、申诉通过后的联动逻辑
+## 五、申诉通过后的后续处置
 
 ### 5.1 商品申诉通过
 
@@ -264,17 +263,17 @@ target_type = PRODUCT
 status = APPROVED
 ```
 
-联动：
+后续处置：
 
-```sql
-products.status = 'ON_SALE'
-products.off_shelf_reason = NULL
+```http
+PUT /admin/products/:id/status
 ```
 
 说明：
 
-- 仅当商品当前为 `OFF_SHELF` 时恢复上架。
-- 已删除商品不会自动恢复。
+- 管理员确认申诉成立后，可通过商品状态接口恢复上架。
+- 请求体可传 `relatedType=APPEAL`、`relatedId=申诉ID`，让商品状态日志关联该申诉。
+- 已删除商品是否恢复仍由商品状态接口规则决定。
 
 ### 5.2 账号申诉通过
 
@@ -283,16 +282,17 @@ target_type = USER
 status = APPROVED
 ```
 
-联动：
+后续处置：
 
-```sql
-users.account_status = 'NORMAL'
+```http
+PUT /admin/users/:id/status
 ```
 
 说明：
 
-- 用于账号禁用后的恢复。
-- 不改变 `auth_status`。
+- 管理员确认申诉成立后，可通过用户状态接口恢复账号。
+- 撤销永久封禁仍必须由超级管理员执行。
+- 请求体可传 `relatedType=APPEAL`、`relatedId=申诉ID`，让用户状态日志关联该申诉。
 
 ### 5.3 订单申诉通过
 
@@ -307,6 +307,7 @@ status = APPROVED
 
 - 订单状态通常涉及买卖双方和商品锁定状态。
 - 自动恢复订单容易造成交易状态不一致。
+- 如需调整订单，应通过订单后台状态接口或异常关闭接口处理，并传 `relatedType=APPEAL`、`relatedId=申诉ID`。
 
 ### 5.4 举报申诉通过
 
@@ -332,7 +333,7 @@ admin_logs
 使用：
 
 ```text
-operation_type = HANDLE_APPEAL
+operation_type = MARK_APPEAL_PROCESSING / APPROVE_APPEAL / REJECT_APPEAL
 target_type = APPEAL
 target_id = appeal.id
 ```

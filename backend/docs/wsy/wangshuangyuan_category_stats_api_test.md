@@ -152,6 +152,7 @@ $categoryId
 
 - 返回新分类 ID。
 - 数据库中新增一条分类。
+- `admin_logs` 中新增 `CREATE_CATEGORY` 日志，`target_type = CATEGORY`。
 
 ### 4.4 修改分类
 
@@ -168,6 +169,7 @@ Invoke-RestMethod `
 
 - 返回分类 ID。
 - 分类名称和排序更新。
+- `admin_logs` 中新增 `UPDATE_CATEGORY` 日志，`target_type = CATEGORY`。
 
 ### 4.5 禁用分类
 
@@ -185,6 +187,8 @@ Invoke-RestMethod `
 ```text
 data.status = DISABLED
 ```
+
+并写入 `STATUS_CATEGORY` 日志。
 
 ### 4.6 普通分类列表不展示禁用分类
 
@@ -215,6 +219,8 @@ Invoke-RestMethod `
 data.status = ENABLED
 ```
 
+并写入 `STATUS_CATEGORY` 日志。
+
 ### 4.8 删除分类
 
 ```powershell
@@ -234,6 +240,7 @@ data.status = DISABLED
 
 - 删除分类是逻辑删除，即禁用分类。
 - 不物理删除，避免影响已有商品外键。
+- 删除操作写入 `DELETE_CATEGORY` 日志。
 
 ## 五、异常场景测试
 

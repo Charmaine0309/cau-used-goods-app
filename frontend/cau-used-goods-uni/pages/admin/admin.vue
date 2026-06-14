@@ -1,7 +1,11 @@
 <template>
   <view class="page">
     <view v-if="activeTab === 'data'" class="content">
-      <view class="page-title">数据</view>
+      <view class="admin-hero">
+        <text class="hero-eyebrow">CAU CAMPUS MARKET</text>
+        <text class="page-title">数据</text>
+        <text class="hero-copy">查看平台交易、商品和风险概况</text>
+      </view>
 
       <view class="todo-summary">
         <view class="todo-summary-title">核心数据</view>
@@ -153,8 +157,11 @@
     </view>
 
     <view v-else-if="activeTab === 'review'" class="content">
-      <view class="page-title">审核</view>
-      <view class="page-subtitle">点击待办卡片进入对应处理页面</view>
+      <view class="admin-hero">
+        <text class="hero-eyebrow">CAU CAMPUS MARKET</text>
+        <text class="page-title">审核</text>
+        <text class="hero-copy">优先处理认证、举报和申诉</text>
+      </view>
 
       <view class="todo-panel">
         <view class="todo-card urgent" @click="goPage('/pages/admin-students/admin-students')">
@@ -202,7 +209,11 @@
     </view>
 
     <view v-else class="content">
-      <view class="page-title">我的</view>
+      <view class="admin-hero">
+        <text class="hero-eyebrow">CAU CAMPUS MARKET</text>
+        <text class="page-title">我的</text>
+        <text class="hero-copy">管理员资料与审计日志</text>
+      </view>
       <view class="profile-card">
         <image v-if="adminAvatarUrl" class="avatar" :src="adminAvatarUrl" mode="aspectFill" />
         <view v-else class="avatar placeholder">管</view>
@@ -360,67 +371,91 @@ const categoryOnSaleBarStyle = (item) => {
 .page {
   min-height: 100vh;
   padding-bottom: 140rpx;
-  background: #f5f6f8;
+  background: #f3f8f5;
   box-sizing: border-box;
 }
 
 .content {
-  padding: 28rpx 24rpx;
+  padding: 34rpx 28rpx;
+}
+
+.admin-hero {
+  margin-bottom: 24rpx;
+  padding: 30rpx 30rpx;
+  border-radius: 28rpx;
+  background: linear-gradient(145deg, #23734f, #2f8b62);
+  color: #fff;
+  box-shadow: 0 14rpx 34rpx rgba(31, 106, 73, .08);
+}
+
+.hero-eyebrow,
+.page-title,
+.hero-copy {
+  display: block;
+}
+
+.hero-eyebrow {
+  color: rgba(255, 255, 255, .72);
+  font-size: 20rpx;
+  letter-spacing: 3rpx;
 }
 
 .page-title {
-  margin: 18rpx 0 24rpx;
+  margin: 12rpx 0 0;
   font-size: 38rpx;
+  line-height: 46rpx;
   font-weight: 700;
-  color: #1f2933;
+  color: #fff;
 }
 
-.page-subtitle {
-  margin: -10rpx 0 22rpx;
+.hero-copy {
+  margin-top: 12rpx;
   font-size: 24rpx;
-  color: #8a96a8;
+  line-height: 36rpx;
+  color: rgba(255, 255, 255, .78);
 }
 
 .section-title {
-  margin: 32rpx 0 18rpx;
+  margin: 34rpx 0 18rpx;
   font-size: 32rpx;
   font-weight: 700;
-  color: #1f2933;
+  color: #20352b;
 }
 
 .todo-summary {
-  padding: 30rpx;
-  border-radius: 18rpx;
-  background: #14213d;
+  padding: 28rpx;
+  border-radius: 26rpx;
+  background: #fff;
+  box-shadow: 0 12rpx 32rpx rgba(32, 53, 43, 0.05);
   box-sizing: border-box;
 }
 
 .todo-summary-title {
   font-size: 28rpx;
   font-weight: 700;
-  color: #fff;
+  color: #20352b;
 }
 
 .todo-summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18rpx;
+  gap: 20rpx;
   margin-top: 22rpx;
 }
 
 .todo-summary-item {
   min-height: 150rpx;
   padding: 24rpx;
-  border-radius: 16rpx;
-  background: rgba(255, 255, 255, 0.1);
+  border-radius: 24rpx;
+  background: #f3f8f5;
   box-sizing: border-box;
 }
 
 .todo-summary-value {
-  font-size: 58rpx;
-  line-height: 64rpx;
+  font-size: 54rpx;
+  line-height: 60rpx;
   font-weight: 700;
-  color: #dcfce7;
+  color: #23734f;
 }
 
 .todo-summary-value.warning {
@@ -434,20 +469,21 @@ const categoryOnSaleBarStyle = (item) => {
 .todo-summary-label {
   margin-top: 14rpx;
   font-size: 26rpx;
-  color: #d0d5dd;
+  color: #667085;
 }
 
 .overview-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18rpx;
+  gap: 20rpx;
 }
 
 .overview-card {
   min-height: 244rpx;
-  padding: 24rpx;
-  border-radius: 16rpx;
+  padding: 26rpx;
+  border-radius: 26rpx;
   background: #fff;
+  box-shadow: 0 12rpx 32rpx rgba(32, 53, 43, 0.05);
   box-sizing: border-box;
 }
 
@@ -461,15 +497,15 @@ const categoryOnSaleBarStyle = (item) => {
 .overview-title {
   font-size: 26rpx;
   font-weight: 700;
-  color: #1f2933;
+  color: #20352b;
 }
 
 .overview-tag {
   max-width: 150rpx;
-  padding: 4rpx 10rpx;
+  padding: 6rpx 12rpx;
   border-radius: 999rpx;
-  background: #dcfce7;
-  color: #16a34a;
+  background: #e8f8ef;
+  color: #18a45a;
   font-size: 20rpx;
   white-space: nowrap;
   overflow: hidden;
@@ -486,7 +522,7 @@ const categoryOnSaleBarStyle = (item) => {
   font-size: 52rpx;
   line-height: 58rpx;
   font-weight: 700;
-  color: #1f2933;
+  color: #20352b;
 }
 
 .overview-main.danger {
@@ -509,8 +545,9 @@ const categoryOnSaleBarStyle = (item) => {
 }
 
 .quick-list {
-  border-radius: 16rpx;
+  border-radius: 26rpx;
   background: #fff;
+  box-shadow: 0 12rpx 32rpx rgba(32, 53, 43, 0.05);
   overflow: hidden;
 }
 
@@ -554,8 +591,9 @@ const categoryOnSaleBarStyle = (item) => {
 
 .trend-card {
   padding: 28rpx 22rpx;
-  border-radius: 16rpx;
+  border-radius: 26rpx;
   background: #fff;
+  box-shadow: 0 12rpx 32rpx rgba(32, 53, 43, 0.05);
 }
 
 .trend-legend {
@@ -645,8 +683,9 @@ const categoryOnSaleBarStyle = (item) => {
 }
 
 .category-list {
-  border-radius: 16rpx;
+  border-radius: 26rpx;
   background: #fff;
+  box-shadow: 0 12rpx 32rpx rgba(32, 53, 43, 0.05);
   overflow: hidden;
 }
 
@@ -707,20 +746,21 @@ const categoryOnSaleBarStyle = (item) => {
 .todo-panel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18rpx;
+  gap: 20rpx;
 }
 
 .todo-card {
   min-height: 150rpx;
-  padding: 28rpx;
-  border-radius: 16rpx;
+  padding: 30rpx;
+  border-radius: 26rpx;
   background: #fff;
   border: 2rpx solid transparent;
+  box-shadow: 0 12rpx 32rpx rgba(32, 53, 43, 0.05);
   box-sizing: border-box;
 }
 
 .todo-card.urgent {
-  border-color: #22c55e;
+  border-color: #79ddb0;
 }
 
 .todo-number {
@@ -743,8 +783,9 @@ const categoryOnSaleBarStyle = (item) => {
 .panel,
 .menu-list,
 .profile-card {
-  border-radius: 16rpx;
+  border-radius: 26rpx;
   background: #fff;
+  box-shadow: 0 12rpx 32rpx rgba(32, 53, 43, 0.05);
   overflow: hidden;
 }
 
@@ -753,7 +794,7 @@ const categoryOnSaleBarStyle = (item) => {
   justify-content: space-between;
   align-items: center;
   gap: 20rpx;
-  padding: 24rpx 28rpx;
+  padding: 26rpx 30rpx;
   border-bottom: 1rpx solid #eef0f3;
   font-size: 28rpx;
   color: #475467;
@@ -836,21 +877,22 @@ const categoryOnSaleBarStyle = (item) => {
 .manage-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18rpx;
+  gap: 20rpx;
 }
 
 .manage-card {
-  min-height: 138rpx;
-  padding: 26rpx;
-  border-radius: 16rpx;
+  min-height: 156rpx;
+  padding: 28rpx;
+  border-radius: 26rpx;
   background: #fff;
+  box-shadow: 0 12rpx 32rpx rgba(32, 53, 43, 0.05);
   box-sizing: border-box;
 }
 
 .manage-title {
   font-size: 30rpx;
   font-weight: 700;
-  color: #1f2933;
+  color: #20352b;
 }
 
 .manage-desc {
@@ -861,7 +903,7 @@ const categoryOnSaleBarStyle = (item) => {
 
 .hint-panel {
   padding: 24rpx 28rpx;
-  border-radius: 16rpx;
+  border-radius: 26rpx;
   background: #fff;
 }
 
@@ -896,14 +938,14 @@ const categoryOnSaleBarStyle = (item) => {
 .profile-card {
   display: flex;
   align-items: center;
-  padding: 30rpx;
+  padding: 34rpx;
   margin-bottom: 24rpx;
 }
 
 .avatar {
-  width: 108rpx;
-  height: 108rpx;
-  border-radius: 54rpx;
+  width: 116rpx;
+  height: 116rpx;
+  border-radius: 58rpx;
   margin-right: 24rpx;
   background: #e7edf3;
 }
@@ -938,10 +980,11 @@ const categoryOnSaleBarStyle = (item) => {
   margin-top: 28rpx;
   height: 88rpx;
   line-height: 88rpx;
-  border-radius: 12rpx;
+  border-radius: 22rpx;
   background: #fff;
   color: #ef4444;
   font-size: 30rpx;
+  box-shadow: 0 12rpx 32rpx rgba(32, 53, 43, 0.05);
 }
 
 .tabbar {
@@ -951,10 +994,11 @@ const categoryOnSaleBarStyle = (item) => {
   bottom: 0;
   z-index: 10;
   display: flex;
-  height: 112rpx;
+  height: 116rpx;
   padding-bottom: env(safe-area-inset-bottom);
   background: #fff;
   border-top: 1rpx solid #eef0f3;
+  box-shadow: 0 -12rpx 28rpx rgba(32, 53, 43, 0.06);
 }
 
 .tab-item {

@@ -10,4 +10,5 @@ func RegisterRoutes(r *gin.Engine, handler *Handler, authMiddleware gin.HandlerF
 		group.POST("/dev-login", handler.DevLogin)
 	}
 	group.POST("/wechat-login", handler.WechatLogin)
+	group.POST("/reactivate", handler.Reactivate)
 }

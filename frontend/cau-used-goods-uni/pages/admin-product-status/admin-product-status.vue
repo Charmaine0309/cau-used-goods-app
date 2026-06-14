@@ -30,10 +30,14 @@ import { normalizeImage } from '../../utils/product-format'
 
 const product = ref({})
 const productId = ref('')
+const relatedType = ref('')
+const relatedId = ref(0)
 const mainImage = computed(() => normalizeImage(product.value?.images?.[0] || ''))
 
 onLoad((query = {}) => {
   productId.value = query.id || ''
+  relatedType.value = String(query.relatedType || '').toUpperCase()
+  relatedId.value = Number(query.relatedId || 0)
   load()
 })
 
@@ -51,7 +55,12 @@ const load = async () => {
 
 const changeStatus = async (status) => {
   try {
-    await updateAdminProductStatus(productId.value, status)
+    const extra = {}
+    if (relatedType.value && relatedId.value) {
+      extra.relatedType = relatedType.value
+      extra.relatedId = relatedId.value
+    }
+    await updateAdminProductStatus(productId.value, status, extra)
     uni.showToast({ title: status === 'ON_SALE' ? '已上架' : '已下架', icon: 'success' })
     load()
   } catch (error) {

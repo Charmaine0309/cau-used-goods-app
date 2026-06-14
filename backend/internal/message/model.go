@@ -18,6 +18,7 @@ const (
 
 const (
 	RelatedTypeOrder   = "ORDER"
+	RelatedTypeUser    = "USER"
 	RelatedTypeProduct = "PRODUCT"
 	RelatedTypeReport  = "REPORT"
 	RelatedTypeNotice  = "NOTICE"

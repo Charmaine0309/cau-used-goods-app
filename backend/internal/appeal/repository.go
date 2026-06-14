@@ -280,7 +280,16 @@ func (r *Repository) Handle(ctx context.Context, input HandleAppealInput) (*Appe
 		return nil, fmt.Errorf("begin handle appeal tx: %w", err)
 	}
 	defer tx.Rollback()
+	if err := r.HandleTx(ctx, tx, input); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit handle appeal tx: %w", err)
+	}
+	return r.GetByID(ctx, input.AppealID)
+}
 
+func (r *Repository) HandleTx(ctx context.Context, tx *sql.Tx, input HandleAppealInput) error {
 	var currentStatus string
 	if err := tx.QueryRowContext(ctx, `
 		SELECT status
@@ -289,12 +298,12 @@ func (r *Repository) Handle(ctx context.Context, input HandleAppealInput) (*Appe
 		FOR UPDATE
 	`, input.AppealID).Scan(&currentStatus); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("appeal not found")
+			return fmt.Errorf("appeal not found")
 		}
-		return nil, fmt.Errorf("lock appeal: %w", err)
+		return fmt.Errorf("lock appeal: %w", err)
 	}
 	if currentStatus != StatusPending && currentStatus != StatusProcessing {
-		return nil, fmt.Errorf("appeal already handled")
+		return fmt.Errorf("appeal already handled")
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -302,13 +311,9 @@ func (r *Repository) Handle(ctx context.Context, input HandleAppealInput) (*Appe
 		SET status = ?, handle_result = ?, handler_id = ?, handle_time = NOW(), update_time = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, input.Status, input.HandleResult, input.AdminID, input.AppealID); err != nil {
-		return nil, fmt.Errorf("handle appeal: %w", err)
+		return fmt.Errorf("handle appeal: %w", err)
 	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit handle appeal tx: %w", err)
-	}
-	return r.GetByID(ctx, input.AppealID)
+	return nil
 }
 
 func (r *Repository) Close(ctx context.Context, input CloseAppealInput) (*Appeal, error) {
@@ -331,22 +336,58 @@ func (r *Repository) Close(ctx context.Context, input CloseAppealInput) (*Appeal
 }
 
 func (r *Repository) MarkProcessing(ctx context.Context, appealID uint64, adminID uint64) (*Appeal, error) {
-	result, err := r.db.ExecContext(ctx, `
+	if err := r.MarkProcessingTx(ctx, nil, appealID, adminID); err != nil {
+		return nil, err
+	}
+	return r.GetByID(ctx, appealID)
+}
+
+func (r *Repository) MarkProcessingTx(ctx context.Context, tx *sql.Tx, appealID uint64, adminID uint64) error {
+	execer := appealExecutor(r.db)
+	if tx != nil {
+		execer = tx
+	}
+	result, err := execer.ExecContext(ctx, `
 		UPDATE appeals
 		SET status = ?, handler_id = ?, update_time = CURRENT_TIMESTAMP
 		WHERE id = ? AND status = ?
 	`, StatusProcessing, adminID, appealID, StatusPending)
 	if err != nil {
-		return nil, fmt.Errorf("mark appeal processing: %w", err)
+		return fmt.Errorf("mark appeal processing: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return nil, fmt.Errorf("check mark appeal processing result: %w", err)
+		return fmt.Errorf("check mark appeal processing result: %w", err)
 	}
 	if affected == 0 {
-		return nil, fmt.Errorf("appeal cannot be marked processing")
+		return fmt.Errorf("appeal cannot be marked processing")
 	}
-	return r.GetByID(ctx, appealID)
+	return nil
+}
+
+type appealExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
+func (r *Repository) applyApprovedAction(ctx context.Context, tx *sql.Tx, item *Appeal) error {
+	switch item.TargetType {
+	case TargetTypeProduct:
+		_, err := tx.ExecContext(ctx, `
+			UPDATE products
+			SET status = 'ON_SALE', off_shelf_reason = NULL, update_time = CURRENT_TIMESTAMP
+			WHERE id = ? AND is_deleted = 0 AND status = 'OFF_SHELF'
+		`, item.TargetID)
+		if err != nil {
+			return fmt.Errorf("restore appealed product: %w", err)
+		}
+	case TargetTypeUser:
+		// User account restoration is executed through the user-management
+		// status API after the appeal is approved.
+		return nil
+	case TargetTypeOrder, TargetTypeReport:
+		return nil
+	}
+	return nil
 }
 
 func scanAppeal(scanner interface {
