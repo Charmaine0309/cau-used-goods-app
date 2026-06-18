@@ -2,8 +2,23 @@ import { getToken, clearAuth } from './auth'
 
 export const BASE_URL = 'http://127.0.0.1:8080'
 
+export const normalizeErrorMessage = (message, fallback = '请求失败，请稍后重试') => {
+  const value = String(message || '').trim()
+  if (!value) return fallback
+  const lower = value.toLowerCase()
+  if (lower.includes('not found')) return '未找到相关数据'
+  if (lower.includes('already reviewed')) return '该订单已经评价过'
+  if (lower.includes('unauthorized') || lower.includes('token')) return '登录已过期，请重新登录'
+  if (lower.includes('forbidden') || lower.includes('permission')) return '没有权限进行该操作'
+  if (lower.includes('invalid')) return '提交内容格式不正确'
+  if (lower.includes('duplicate')) return '数据已存在，请勿重复提交'
+  if (lower.includes('failed') || lower.includes('error')) return fallback
+  if (/^[\x00-\x7F]+$/.test(value)) return fallback
+  return value
+}
+
 const getErrorMessage = (body, fallback) => {
-  return body && body.message ? body.message : fallback
+  return normalizeErrorMessage(body && body.message, fallback)
 }
 
 const buildQuery = (data = {}) => {

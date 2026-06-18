@@ -13,6 +13,7 @@
         </view>
       </view>
       <view class="actions">
+        <button v-if="!isSelf" class="chat-btn" @click="chatWithUser">聊一聊</button>
         <button class="report-btn" @click="reportUser">举报该用户</button>
       </view>
     </view>
@@ -58,11 +59,14 @@ import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { getPublicProfile } from '../../api/user'
 import { listProducts } from '../../api/product'
+import { createOrGetConversation } from '../../api/chat'
 import { getUser } from '../../utils/auth'
 import { BASE_URL } from '../../utils/request'
 import { navigate, showError } from '../../utils/navigation'
 
 const userId = ref('')
+const preferredProductId = ref('')
+const preferredProductTitle = ref('')
 const profile = ref(null)
 const products = ref([])
 const reviews = ref([])
@@ -108,6 +112,8 @@ function loadLocalReviews() {
 
 onLoad(async (options) => {
   userId.value = options.id || ''
+  preferredProductId.value = options.productId || ''
+  preferredProductTitle.value = options.productTitle ? decodeURIComponent(options.productTitle) : ''
   if (!userId.value) {
     showError(new Error('用户不存在'))
     return
@@ -134,6 +140,31 @@ function reportUser() {
   }
   navigate('/pages/interaction/report', { targetType: 'USER', targetId: userId.value })
 }
+async function chatWithUser() {
+  const product = preferredProductId.value
+    ? { id: preferredProductId.value, title: preferredProductTitle.value || products.value[0]?.title || '商品咨询' }
+    : products.value[0]
+  if (!product?.id) {
+    uni.showToast({ title: 'TA 暂无可咨询商品', icon: 'none' })
+    return
+  }
+  const productId = Number(product.id)
+  if (!Number.isFinite(productId) || productId <= 0) {
+    uni.showToast({ title: '商品信息异常，暂时无法聊天', icon: 'none' })
+    return
+  }
+  try {
+    const conversation = await createOrGetConversation(productId)
+    navigate('/pages/chat/chat', {
+      conversationId: conversation.id,
+      title: product.title,
+      targetUserId: userId.value,
+      productId
+    })
+  } catch (error) {
+    uni.showToast({ title: error.message || '暂时无法发起聊天', icon: 'none' })
+  }
+}
 </script>
 
 <style scoped>
@@ -149,8 +180,10 @@ function reportUser() {
 .tags { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 18rpx; }
 .tag { padding: 8rpx 16rpx; border-radius: 999rpx; background: #edf6f1; color: #23734f; font-size: 23rpx; }
 .tag.danger { background: #fff1ef; color: #d85c45; }
-.actions { margin-top: 28rpx; }
-.report-btn { height: 72rpx; border-radius: 999rpx; background: #fff1ef; color: #d85c45; font-size: 26rpx; line-height: 72rpx; }
+.actions { display: flex; gap: 16rpx; margin-top: 28rpx; }
+.chat-btn, .report-btn { flex: 1; height: 72rpx; border-radius: 999rpx; font-size: 26rpx; line-height: 72rpx; }
+.chat-btn { background: #23734f; color: #fff; }
+.report-btn { background: #fff1ef; color: #d85c45; }
 .section { margin-top: 22rpx; padding: 26rpx; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 20rpx; }
 .section-title { color: #202124; font-size: 31rpx; font-weight: 800; }

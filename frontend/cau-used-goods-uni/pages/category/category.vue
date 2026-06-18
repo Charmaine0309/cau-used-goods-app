@@ -28,7 +28,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { onLoad, onReachBottom } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import ProductCard from '../../components/ProductCard.vue'
 import { listCategories, listProducts } from '../../api/product'
 import { buildCategoryMap, formatProduct } from '../../utils/product-format'
@@ -93,6 +93,13 @@ onLoad(async (options) => {
 })
 
 onReachBottom(() => loadProducts())
+onPullDownRefresh(async () => {
+  try {
+    await loadProducts(true)
+  } finally {
+    uni.stopPullDownRefresh()
+  }
+})
 </script>
 
 <style scoped>

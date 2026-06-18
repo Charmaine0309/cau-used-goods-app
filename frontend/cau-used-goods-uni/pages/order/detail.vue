@@ -8,16 +8,19 @@
       <StatusBadge :label="status.label" :tone="status.tone" />
     </view>
 
-    <view class="card">
+    <view class="card product-card" @click="openProduct">
       <ProductRow :product="order.product" />
     </view>
 
-    <view class="card seller-card">
-      <view class="seller-avatar">{{ sellerName.slice(0, 1) }}</view>
+    <view class="card seller-card" @click="openSeller">
+      <image v-if="sellerAvatar" class="seller-avatar image-avatar" :src="sellerAvatar" mode="aspectFill" />
+      <view v-else class="seller-avatar">{{ sellerName.slice(0, 1) }}</view>
       <view class="seller-body">
         <text class="seller-label">卖家信息</text>
         <text class="seller-name">{{ sellerName }}</text>
+        <text class="seller-id">ID：{{ sellerId || '暂无' }}</text>
       </view>
+      <text class="seller-arrow">›</text>
     </view>
 
     <view class="card info">
@@ -37,10 +40,6 @@
     <view v-if="order.status === 'WAIT_MEET' || order.status === 'COMPLETED'" class="card confirm-card">
       <view class="confirm-title">交易完成确认</view>
       <view class="confirm-row">
-        <text>买家确认</text>
-        <text :class="['confirm-state', buyerConfirmed ? 'done' : 'pending']">{{ buyerConfirmed ? '已确认' : '待确认' }}</text>
-      </view>
-      <view class="confirm-row">
         <text>卖家确认</text>
         <text :class="['confirm-state', sellerConfirmed ? 'done' : 'pending']">{{ sellerConfirmed ? '已确认' : '待确认' }}</text>
       </view>
@@ -48,7 +47,6 @@
 
     <view class="actions">
       <button v-if="isSeller && order.status === 'PENDING_CONFIRM'" class="btn btn-primary" @click="change('confirm')">确认预约</button>
-      <button v-if="isBuyer && order.status === 'WAIT_MEET' && !buyerConfirmed" class="btn btn-primary" @click="confirmBuyerMeet">确认已面交</button>
       <button v-if="isSeller && order.status === 'WAIT_MEET'" class="btn btn-primary" @click="change('complete')">确认完成交易</button>
       <button v-if="canCancel" class="btn btn-plain" @click="cancel">取消订单</button>
       <button v-if="order.status === 'COMPLETED' && !isSeller" class="btn btn-primary" :disabled="hasReviewed" @click="review">
@@ -64,19 +62,22 @@ import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import ProductRow from '../../components/ProductRow.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
+import { getPublicProfile } from '../../api/user'
 import { tradeService } from '../../services/trade'
 import { getUser } from '../../utils/auth'
 import { ORDER_STATUS } from '../../utils/constants'
+import { BASE_URL } from '../../utils/request'
 import { navigate, showError, showSuccess } from '../../utils/navigation'
 
 const order = ref()
+const sellerProfile = ref(null)
 const currentUserId = computed(() => String(getUser()?.id || ''))
 const status = computed(() => ORDER_STATUS[order.value?.status] || { label: '', tone: 'muted' })
 const isSeller = computed(() => String(order.value?.sellerId) === currentUserId.value)
-const isBuyer = computed(() => String(order.value?.buyerId) === currentUserId.value)
 const canCancel = computed(() => ['PENDING_CONFIRM', 'WAIT_MEET'].includes(order.value?.status))
-const sellerName = computed(() => order.value?.sellerName || order.value?.sellerNickname || 'CAU 卖家')
-const buyerConfirmed = computed(() => order.value?.status === 'COMPLETED' || uni.getStorageSync(`order-buyer-confirmed-${id}`) === true)
+const sellerId = computed(() => order.value?.sellerId || order.value?.seller?.id || '')
+const sellerName = computed(() => sellerProfile.value?.nickname || order.value?.sellerName || order.value?.sellerNickname || order.value?.seller?.nickname || 'CAU 卖家')
+const sellerAvatar = computed(() => normalizeImage(sellerProfile.value?.avatarUrl || order.value?.sellerAvatarUrl || order.value?.seller?.avatarUrl || order.value?.sellerAvatar))
 const sellerConfirmed = computed(() => order.value?.status === 'COMPLETED')
 const hasReviewed = computed(() => order.value?.reviewed === true || uni.getStorageSync(`order-reviewed-${id}`) === true)
 const statusTip = computed(() => ({
@@ -106,9 +107,20 @@ async function load() {
       }
     }
     order.value = detail
+    loadSellerProfile()
   } catch (error) {
     showError(error)
   }
+}
+
+async function loadSellerProfile() {
+  if (!sellerId.value) return
+  sellerProfile.value = await getPublicProfile(sellerId.value).catch(() => null)
+}
+
+function normalizeImage(url) {
+  if (!url) return ''
+  return /^https?:\/\//.test(url) ? url : `${BASE_URL}${url}`
 }
 
 async function change(action, payload) {
@@ -133,14 +145,36 @@ function review() {
   navigate('/pages/interaction/review', { orderId: id })
 }
 
-function report() {
-  navigate('/pages/interaction/report', { targetType: 'ORDER', targetId: id })
+function openProduct() {
+  const productId = order.value?.product?.id || order.value?.productId
+  if (!productId) {
+    showError(new Error('商品信息缺失，暂时无法查看'))
+    return
+  }
+  navigate('/pages/detail/detail', {
+    id: productId,
+    readonly: order.value?.status === 'COMPLETED' ? 1 : 0,
+    snapshotTitle: order.value?.product?.title || order.value?.productTitleSnapshot || '',
+    snapshotPrice: order.value?.product?.price || order.value?.productPriceSnapshot || '',
+    snapshotImage: order.value?.product?.image || order.value?.productImage || '',
+    snapshotMeetLocation: order.value?.meetLocation || order.value?.product?.meetLocation || '',
+    snapshotSellerId: sellerId.value,
+    snapshotSellerName: sellerName.value
+  })
 }
 
-function confirmBuyerMeet() {
-  uni.setStorageSync(`order-buyer-confirmed-${id}`, true)
-  showSuccess('已记录买家确认')
-  load()
+function openSeller() {
+  if (!sellerId.value) return
+  const productId = order.value?.product?.id || order.value?.productId
+  navigate('/pages/user-profile/user-profile', {
+    id: sellerId.value,
+    productId,
+    productTitle: order.value?.product?.title || order.value?.productTitleSnapshot || ''
+  })
+}
+
+function report() {
+  navigate('/pages/interaction/report', { targetType: 'ORDER', targetId: id })
 }
 </script>
 
@@ -249,6 +283,8 @@ function confirmBuyerMeet() {
 
 .seller-body {
   display: flex;
+  flex: 1;
+  min-width: 0;
   flex-direction: column;
   gap: 8rpx;
 }
@@ -262,6 +298,24 @@ function confirmBuyerMeet() {
   color: #243129;
   font-size: 29rpx;
   font-weight: 700;
+}
+
+.seller-id {
+  color: #8a9690;
+  font-size: 23rpx;
+}
+
+.seller-arrow {
+  color: #b8c1bd;
+  font-size: 44rpx;
+}
+
+.product-card {
+  cursor: pointer;
+}
+
+.image-avatar {
+  background: #e8ecef;
 }
 
 .confirm-title {

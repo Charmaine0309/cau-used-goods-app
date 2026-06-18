@@ -37,7 +37,8 @@
               <text class="name">{{ item.targetNickname || 'CAU 同学' }}</text>
               <text class="time">{{ formatTime(item.lastMessageTime || item.updateTime) }}</text>
             </view>
-            <text class="preview">{{ item.lastMessageContent || `关于「${item.productTitle || '商品'}」的沟通` }}</text>
+            <text class="product-line">商品：{{ conversationProductTitle(item) }}</text>
+            <text class="preview">{{ conversationPreview(item) }}</text>
           </view>
           <view v-if="item.unreadCount" class="badge">{{ item.unreadCount > 99 ? '99+' : item.unreadCount }}</view>
         </view>
@@ -54,18 +55,15 @@
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import EmptyState from '../../components/EmptyState.vue'
-import { listConversations } from '../../api/chat'
+import { hideConversation as hideConversationApi, listConversations } from '../../api/chat'
 import { tradeService } from '../../services/trade'
 import { BASE_URL } from '../../utils/request'
 import { navigate, showError } from '../../utils/navigation'
 
 const SYSTEM_TYPES = ['ORDER_CREATED', 'ORDER_CONFIRMED', 'ORDER_CANCELED', 'ORDER_TIMEOUT', 'REPORT_HANDLED', 'SYSTEM_NOTICE']
-const hiddenKey = 'hidden-chat-conversations'
-
 const loading = ref(false)
 const messages = ref([])
 const conversations = ref([])
-const hiddenIds = ref([])
 const swipedId = ref('')
 let startX = 0
 let touchId = ''
@@ -87,7 +85,6 @@ const systemEntry = computed(() => {
   }
 })
 const visibleConversations = computed(() => conversations.value
-  .filter((item) => !hiddenIds.value.includes(String(item.id)))
   .slice()
   .sort((a, b) => timeValue(b.lastMessageTime || b.updateTime) - timeValue(a.lastMessageTime || a.updateTime)))
 const unreadTotal = computed(() => {
@@ -115,10 +112,46 @@ function avatarText(item) {
   return (item.targetNickname || '同').slice(0, 1)
 }
 
+function conversationProductTitle(item) {
+  return item.productTitle || item.productTitleSnapshot || item.product?.title || '商品'
+}
+
+function conversationProductId(item) {
+  return item.productId || item.product_id || item.product?.id || ''
+}
+
+function getDeletedMessageIds(conversationId) {
+  const value = uni.getStorageSync(`deleted-chat-messages-${conversationId}`) || []
+  return Array.isArray(value) ? value.map(String) : []
+}
+
+function getDeletedMessageContents(conversationId) {
+  const value = uni.getStorageSync(`deleted-chat-message-contents-${conversationId}`) || []
+  return Array.isArray(value) ? value.map(String) : []
+}
+
+function conversationLastMessageId(item) {
+  return item.lastMessageId || item.last_message_id || item.lastMessage?.id || item.message?.id || ''
+}
+
+function isConversationPreviewDeleted(item) {
+  const lastMessageId = conversationLastMessageId(item)
+  const lastContent = String(item.lastMessageContent || '').trim()
+  const deletedIds = getDeletedMessageIds(item.id)
+  const deletedContents = getDeletedMessageContents(item.id)
+  return (lastMessageId && deletedIds.includes(String(lastMessageId)))
+    || (lastContent && deletedContents.includes(lastContent))
+}
+
+function conversationPreview(item) {
+  if (isConversationPreviewDeleted(item)) return '消息已删除'
+  return item.lastMessageContent || `关于「${item.productTitle || '商品'}」的沟通`
+}
+
 async function load() {
   loading.value = true
   swipedId.value = ''
-  hiddenIds.value = uni.getStorageSync(hiddenKey) || []
+  uni.removeStorageSync('hidden-chat-conversations')
   try {
     const [systemList, chatResult] = await Promise.all([
       tradeService.getMessages().catch(() => []),
@@ -154,8 +187,9 @@ function openSystemMessages() {
 function openChat(item) {
   navigate('/pages/chat/chat', {
     conversationId: item.id,
-    title: item.productTitle || '私信沟通',
-    targetUserId: item.targetUserId
+    title: conversationProductTitle(item) || '私信沟通',
+    targetUserId: item.targetUserId,
+    productId: conversationProductId(item)
   })
 }
 
@@ -175,13 +209,17 @@ function touchEnd(event) {
   if (distance > 20) swipedId.value = ''
 }
 
-function hideConversation(id) {
-  const value = String(id)
-  if (!hiddenIds.value.includes(value)) {
-    hiddenIds.value = hiddenIds.value.concat(value)
-    uni.setStorageSync(hiddenKey, hiddenIds.value)
+async function hideConversation(id) {
+  try {
+    await hideConversationApi(id)
+    conversations.value = conversations.value.filter((item) => String(item.id) !== String(id))
+    uni.showToast({ title: '会话已删除', icon: 'success' })
+  } catch (error) {
+    showError(error)
+  } finally {
+    swipedId.value = ''
+    updateTabBadge()
   }
-  swipedId.value = ''
 }
 
 onShow(load)
@@ -212,5 +250,6 @@ onShow(load)
 .name { overflow: hidden; color: #222; font-size: 31rpx; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .time { flex-shrink: 0; color: #a0a6ad; font-size: 22rpx; }
 .preview { display: block; overflow: hidden; margin-top: 12rpx; color: #7b8289; font-size: 25rpx; line-height: 34rpx; text-overflow: ellipsis; white-space: nowrap; }
+.product-line { display: block; overflow: hidden; margin-top: 8rpx; color: #a0a6ad; font-size: 23rpx; line-height: 32rpx; text-overflow: ellipsis; white-space: nowrap; }
 .empty-wrap { margin-top: 80rpx; border-radius: 28rpx; background: #fff; overflow: hidden; }
 </style>

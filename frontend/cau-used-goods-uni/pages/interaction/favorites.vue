@@ -1,15 +1,15 @@
 <template>
   <view class="page">
     <view v-if="products.length" class="list">
-      <view v-for="product in products" :key="product.id" class="card favorite-card">
+      <view v-for="product in products" :key="product.id" class="card favorite-card" @click="openProduct(product.id)">
         <view class="dot" :class="{ disabled: product.status !== 'ON_SALE' }" />
         <view class="favorite-body">
           <ProductRow :product="product" />
           <view class="favorite-actions">
-            <button class="btn btn-primary" :disabled="product.status !== 'ON_SALE'" @click="appointment(product.id)">
+            <button class="btn btn-primary" :disabled="product.status !== 'ON_SALE'" @click.stop="appointment(product.id)">
             {{ product.status === 'ON_SALE' ? '提交预约' : '当前不可预约' }}
             </button>
-            <button class="btn btn-plain" @click="remove(product.id)">取消收藏</button>
+            <button class="btn btn-plain" @click.stop="remove(product.id)">取消收藏</button>
           </view>
         </view>
       </view>
@@ -24,7 +24,7 @@ import { ref } from 'vue'
 import EmptyState from '../../components/EmptyState.vue'
 import ProductRow from '../../components/ProductRow.vue'
 import { tradeService } from '../../services/trade'
-import { navigate, showSuccess } from '../../utils/navigation'
+import { navigate, showError, showSuccess } from '../../utils/navigation'
 
 const products = ref([])
 onShow(load)
@@ -39,6 +39,11 @@ async function load() {
 
 function appointment(productId) {
   navigate('/pages/order/appointment', { productId })
+}
+
+function openProduct(productId) {
+  if (!productId) return
+  navigate('/pages/detail/detail', { id: productId })
 }
 
 async function remove(productId) {

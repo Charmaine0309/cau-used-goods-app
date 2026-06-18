@@ -40,6 +40,18 @@ export const deleteProduct = (id) => request({
   method: 'DELETE'
 })
 
+export const updateProduct = (id, payload) => request({
+  url: `/products/${id}`,
+  method: 'PUT',
+  data: payload
+})
+
+export const addProductImages = (id, images = []) => request({
+  url: `/products/${id}/images`,
+  method: 'POST',
+  data: { images }
+})
+
 export const addFavorite = (productId) => request({
   url: '/favorites',
   method: 'POST',
@@ -100,11 +112,7 @@ export const createProduct = async (payload) => {
     data: product
   })
   if (images.length) {
-    await request({
-      url: `/products/${result.id}/images`,
-      method: 'POST',
-      data: { images }
-    })
+    await addProductImages(result.id, images)
   }
   return result
 }

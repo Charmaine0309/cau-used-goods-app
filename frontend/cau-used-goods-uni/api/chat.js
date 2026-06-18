@@ -3,7 +3,7 @@ import { request } from '../utils/request'
 export const createOrGetConversation = (productId) => request({
   url: '/chat/conversations',
   method: 'POST',
-  data: { productId }
+  data: { productId: Number(productId) }
 })
 
 export const listConversations = (params = {}) => request({
@@ -22,7 +22,17 @@ export const sendMessage = (conversationId, content) => request({
   data: { content }
 })
 
+export const deleteMessage = (messageId) => request({
+  url: `/chat/messages/${messageId}`,
+  method: 'DELETE'
+})
+
 export const markConversationRead = (conversationId) => request({
   url: `/chat/conversations/${conversationId}/read`,
   method: 'PUT'
+})
+
+export const hideConversation = (conversationId) => request({
+  url: `/chat/conversations/${conversationId}`,
+  method: 'DELETE'
 })

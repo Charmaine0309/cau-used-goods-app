@@ -1,7 +1,13 @@
 <template>
   <view class="card" @click="openDetail">
-    <image v-if="product.coverImage" class="cover" :src="product.coverImage" mode="aspectFill" />
-    <view v-else class="cover placeholder">暂无图片</view>
+    <image
+      v-if="product.coverImage && !imageError"
+      class="cover"
+      :src="product.coverImage"
+      mode="aspectFill"
+      @error="imageError = true"
+    />
+    <view v-else class="cover placeholder">图片未找到</view>
     <view class="body">
       <view class="title">{{ product.title }}</view>
       <view class="meta">
@@ -17,11 +23,19 @@
 </template>
 
 <script setup>
+import { ref, watch } from 'vue'
+
 const props = defineProps({
   product: {
     type: Object,
     required: true
   }
+})
+
+const imageError = ref(false)
+
+watch(() => props.product.coverImage, () => {
+  imageError.value = false
 })
 
 const openDetail = () => {

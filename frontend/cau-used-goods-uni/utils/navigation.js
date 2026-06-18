@@ -1,3 +1,5 @@
+import { normalizeErrorMessage } from './request'
+
 export function navigate(path, params = {}) {
   const query = Object.entries(params)
     .filter(([, value]) => value !== undefined && value !== null && value !== '')
@@ -12,7 +14,7 @@ export function showSuccess(title) {
 
 export function showError(error) {
   uni.showToast({
-    title: error?.message || '操作失败，请稍后重试',
+    title: normalizeErrorMessage(error?.message, '操作失败，请稍后重试'),
     icon: 'none',
     duration: 2400
   })

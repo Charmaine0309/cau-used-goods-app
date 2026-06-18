@@ -10,22 +10,24 @@
 
     <view v-if="products.length" class="list">
       <view v-for="item in products" :key="item.id" class="product">
-        <image v-if="item.coverImage" class="cover" :src="item.coverImage" mode="aspectFill" @click="openDetail(item.id)" />
-        <view v-else class="cover placeholder" @click="openDetail(item.id)">暂无图片</view>
-        <view class="content">
-          <view class="top">
-            <view class="name" @click="openDetail(item.id)">{{ item.title }}</view>
-            <text class="status" :class="item.status">{{ getStatusText(item.status) }}</text>
-          </view>
-          <view class="meta">{{ item.category }} · {{ item.conditionText }}</view>
-          <view class="bottom">
-            <text class="price">￥{{ item.priceText }}</text>
-            <view class="actions">
-              <button v-if="item.status === 'ON_SALE'" class="action muted-action" @click="changeStatus(item, 'OFF_SHELF')">下架</button>
-              <button v-if="item.status === 'OFF_SHELF'" class="action primary-action" @click="changeStatus(item, 'ON_SALE')">上架</button>
-              <button class="action" @click="openDetail(item.id)">查看</button>
+        <view class="product-main">
+          <image v-if="item.coverImage" class="cover" :src="item.coverImage" mode="aspectFill" @click="openDetail(item.id)" />
+          <view v-else class="cover placeholder" @click="openDetail(item.id)">暂无图片</view>
+          <view class="content">
+            <view class="top">
+              <view class="name" @click="openDetail(item.id)">{{ item.title }}</view>
+              <text class="status" :class="item.status">{{ getStatusText(item.status) }}</text>
             </view>
+            <view class="meta">{{ item.category }} · {{ item.conditionText }}</view>
+            <text class="price">￥{{ item.priceText }}</text>
           </view>
+        </view>
+        <view class="actions">
+          <button v-if="item.status === 'ON_SALE'" class="action muted-action" @click="changeStatus(item, 'OFF_SHELF')">下架</button>
+          <button v-if="item.status === 'OFF_SHELF'" class="action primary-action" @click="changeStatus(item, 'ON_SALE')">上架</button>
+          <button v-if="canEdit(item)" class="action" @click="editProduct(item)">编辑</button>
+          <button v-if="canEdit(item)" class="action danger-action" @click="deleteMyProduct(item)">删除</button>
+          <button class="action" @click="openDetail(item.id)">查看</button>
         </view>
       </view>
     </view>
@@ -42,7 +44,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { onPullDownRefresh, onShow } from '@dcloudio/uni-app'
-import { listCategories, listMyProducts, updateProductStatus } from '../../api/product'
+import { deleteProduct, listCategories, listMyProducts, updateProductStatus } from '../../api/product'
 import { buildCategoryMap, formatProduct, getStatusText } from '../../utils/product-format'
 
 const categories = ref([])
@@ -65,7 +67,18 @@ const loadData = async () => {
 }
 
 const openDetail = (id) => uni.navigateTo({ url: `/pages/detail/detail?id=${id}` })
-const goPublish = () => uni.switchTab({ url: '/pages/publish/publish' })
+const goPublish = () => {
+  uni.removeStorageSync('PUBLISH_EDIT_PRODUCT_ID')
+  uni.removeStorageSync('PUBLISH_EDIT_PRODUCT_DATA')
+  uni.switchTab({ url: '/pages/publish/publish' })
+}
+const canEdit = (item) => ['ON_SALE', 'OFF_SHELF'].includes(item.status)
+
+const editProduct = (item) => {
+  uni.setStorageSync('PUBLISH_EDIT_PRODUCT_ID', item.id)
+  uni.setStorageSync('PUBLISH_EDIT_PRODUCT_DATA', item)
+  uni.switchTab({ url: '/pages/publish/publish' })
+}
 
 const changeStatus = (item, status) => {
   const title = status === 'ON_SALE' ? '确认重新上架？' : '确认下架商品？'
@@ -85,23 +98,41 @@ const changeStatus = (item, status) => {
   })
 }
 
+const deleteMyProduct = (item) => {
+  uni.showModal({
+    title: '确认删除商品？',
+    content: '删除后商品将不再展示，且无法由买家预约。',
+    success: async ({ confirm }) => {
+      if (!confirm) return
+      try {
+        await deleteProduct(item.id)
+        uni.showToast({ title: '已删除商品', icon: 'success' })
+        await loadData()
+      } catch (error) {
+        uni.showToast({ title: '删除失败，请稍后重试', icon: 'none' })
+      }
+    }
+  })
+}
+
 onShow(loadData)
 onPullDownRefresh(loadData)
 </script>
 
 <style scoped>
-.page { min-height: 100vh; padding: 28rpx; box-sizing: border-box; }
-.summary { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22rpx; }
+.page { min-height: 100vh; padding: 28rpx; background: #f5f8f6; box-sizing: border-box; }
+.summary { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24rpx; padding: 28rpx; border-radius: 26rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(28, 68, 52, .05); }
 .title { color: #26342f; font-size: 38rpx; font-weight: 700; }
 .muted, .load-state { color: #929c98; font-size: 23rpx; }
 .publish, .empty-button { height: 66rpx; border-radius: 999rpx; background: #23734f; color: #fff; font-size: 26rpx; line-height: 66rpx; }
 .publish { width: 128rpx; }
-.list { display: flex; flex-direction: column; gap: 18rpx; }
-.product { display: flex; padding: 18rpx; border-radius: 18rpx; background: #fff; box-shadow: 0 6rpx 18rpx rgba(28, 68, 52, .05); }
+.list { display: flex; flex-direction: column; gap: 22rpx; }
+.product { display: flex; flex-direction: column; gap: 18rpx; padding: 22rpx; border-radius: 24rpx; background: #fff; box-shadow: 0 8rpx 24rpx rgba(28, 68, 52, .05); }
+.product-main { display: flex; min-width: 0; }
 .cover { display: flex; width: 176rpx; height: 176rpx; margin-right: 18rpx; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 14rpx; background: #e8efeb; color: #9aa5a1; font-size: 23rpx; }
 .content { display: flex; min-width: 0; flex: 1; flex-direction: column; justify-content: space-between; }
-.top, .bottom, .actions { display: flex; align-items: center; }
-.top, .bottom { justify-content: space-between; gap: 12rpx; }
+.top, .actions { display: flex; align-items: center; }
+.top { justify-content: space-between; gap: 12rpx; }
 .name { display: -webkit-box; overflow: hidden; flex: 1; color: #26342f; font-size: 29rpx; font-weight: 700; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .status { flex-shrink: 0; padding: 6rpx 12rpx; border-radius: 999rpx; background: #e7f4ec; color: #23734f; font-size: 21rpx; }
 .status.SOLD { background: #f4e9e7; color: #b85d45; }
@@ -109,10 +140,11 @@ onPullDownRefresh(loadData)
 .status.OFF_SHELF { background: #eef0f0; color: #7a817e; }
 .meta { color: #89938f; font-size: 23rpx; }
 .price { color: #e36a3e; font-size: 34rpx; font-weight: 700; }
-.actions { gap: 10rpx; }
-.action { width: 92rpx; height: 56rpx; border-radius: 999rpx; background: #edf4f1; color: #23734f; font-size: 23rpx; line-height: 56rpx; }
+.actions { justify-content: flex-end; gap: 12rpx; padding-top: 16rpx; border-top: 1rpx solid #edf2ef; }
+.action { min-width: 104rpx; height: 58rpx; padding: 0 18rpx; border-radius: 999rpx; background: #edf4f1; color: #23734f; font-size: 24rpx; line-height: 58rpx; }
 .muted-action { background: #f4f1ed; color: #9a7745; }
 .primary-action { background: #23734f; color: #fff; }
+.danger-action { background: #fff1ef; color: #d85c45; }
 .empty { margin-top: 140rpx; padding: 44rpx 28rpx; border-radius: 18rpx; background: #fff; text-align: center; }
 .empty-title { margin-bottom: 12rpx; color: #26342f; font-size: 32rpx; font-weight: 700; }
 .empty-button { width: 180rpx; margin-top: 28rpx; }
