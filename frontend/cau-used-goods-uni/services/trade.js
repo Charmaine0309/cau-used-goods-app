@@ -25,12 +25,34 @@ function formatDateTime(value) {
 function normalizeProduct(item = {}) {
   return {
     ...item,
-    image: absoluteImage(item.image || item.productImage || item.images?.[0]),
+    image: absoluteImage(pickProductImage(item)),
     meetLocation: item.meetLocation || '预约后协商'
   }
 }
 
+function pickProductImage(item = {}) {
+  const images = Array.isArray(item.images) ? item.images : []
+  return item.image
+    || item.productImage
+    || item.productImageUrl
+    || item.productCover
+    || item.productCoverImage
+    || item.coverImage
+    || item.coverImageUrl
+    || item.imageUrl
+    || item.snapshotImage
+    || item.productImageSnapshot
+    || item.product?.image
+    || item.product?.productImage
+    || item.product?.coverImage
+    || item.product?.imageUrl
+    || item.product?.images?.[0]
+    || images[0]
+    || ''
+}
+
 function normalizeOrder(item = {}) {
+  const productImage = pickProductImage(item)
   return {
     ...item,
     id: String(item.id),
@@ -42,12 +64,13 @@ function normalizeOrder(item = {}) {
     confirmTime: formatDateTime(item.confirmTime),
     finishTime: formatDateTime(item.finishTime),
     closeTime: formatDateTime(item.closeTime),
-    product: normalizeProduct(item.product || {
-      id: item.productId,
-      title: item.productTitleSnapshot,
-      price: item.productPriceSnapshot,
-      image: item.productImage,
-      meetLocation: item.meetLocation
+    product: normalizeProduct({
+      ...(item.product || {}),
+      id: item.product?.id || item.productId,
+      title: item.product?.title || item.productTitleSnapshot,
+      price: item.product?.price || item.productPriceSnapshot,
+      image: productImage,
+      meetLocation: item.product?.meetLocation || item.meetLocation
     })
   }
 }
@@ -96,4 +119,3 @@ export const tradeService = {
     createdAt: formatDateTime(item.createTime || item.createdAt)
   }))
 }
-

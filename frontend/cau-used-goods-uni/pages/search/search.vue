@@ -139,8 +139,16 @@ const changeSort = ({ detail }) => {
   search()
 }
 
+const decodeQueryText = (value = '') => {
+  try {
+    return decodeURIComponent(value)
+  } catch (error) {
+    return value
+  }
+}
+
 onLoad(async (options) => {
-  filters.keyword = options.keyword || ''
+  filters.keyword = decodeQueryText(options.keyword || '')
   filters.categoryId = Number(options.categoryId || 0)
 
   try {

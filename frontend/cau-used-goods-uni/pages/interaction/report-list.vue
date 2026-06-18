@@ -1,7 +1,7 @@
 <template>
   <view class="page">
     <view v-if="reports.length" class="list">
-      <view v-for="report in reports" :key="report.id" class="card report">
+      <view v-for="report in reports" :key="report.id" class="card report" @click="openDetail(report)">
         <view class="dot" :class="{ done: report.status === 'RESOLVED' }" />
         <view class="report-body">
           <view class="report-head">
@@ -25,7 +25,7 @@ import EmptyState from '../../components/EmptyState.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import { tradeService } from '../../services/trade'
 import { REPORT_STATUS } from '../../utils/constants'
-import { showError } from '../../utils/navigation'
+import { navigate, showError } from '../../utils/navigation'
 
 const reports = ref([])
 onShow(async () => {
@@ -38,6 +38,10 @@ onShow(async () => {
 
 function status(value) {
   return REPORT_STATUS[value] || { label: value, tone: 'muted' }
+}
+
+function openDetail(report) {
+  navigate('/pages/interaction/report-detail', { id: report.id })
 }
 </script>
 

@@ -1,19 +1,24 @@
 <template>
   <view v-if="product" class="page">
-    <swiper v-if="product.images && product.images.length" class="gallery" indicator-dots circular>
-      <swiper-item v-for="image in product.images" :key="image">
-        <image class="gallery-image" :src="image" mode="aspectFill" />
+    <swiper v-if="visibleImages.length" class="gallery" indicator-dots circular>
+      <swiper-item v-for="image in visibleImages" :key="image">
+        <image class="gallery-image" :src="image" mode="aspectFill" @error="markImageFailed(image)" />
       </swiper-item>
     </swiper>
-    <view v-else class="gallery placeholder">暂无图片</view>
+    <view v-else class="gallery placeholder">图片未找到</view>
 
     <view class="card">
       <view class="price-line">
-        <text class="price">¥{{ product.priceText }}</text>
+        <text class="price">￥{{ product.priceText }}</text>
         <text class="status">{{ statusText }}</text>
       </view>
       <view class="title">{{ product.title }}</view>
-      <view class="meta">{{ product.conditionText }} · {{ product.viewCount || 0 }} 次浏览 · {{ product.timeText }}</view>
+      <view class="meta">
+        <text>{{ product.conditionText }}</text>
+        <text>{{ product.viewCount || 0 }} 浏览</text>
+        <text>{{ favoriteCount }} 收藏</text>
+        <text>{{ product.timeText }}</text>
+      </view>
     </view>
 
     <view class="card">
@@ -21,25 +26,22 @@
       <view class="description">{{ product.description || '卖家暂未填写描述' }}</view>
     </view>
 
-    <view class="card">
-      <view class="section-title">面交信息</view>
-      <view class="description">建议地点：{{ product.meetLocation || '预约后协商' }}</view>
-      <view class="privacy">为保护隐私，联系方式仅在预约进入待面交后向交易双方展示。</view>
-    </view>
-
-    <view class="card seller">
+    <view class="card seller" @click="openSeller">
       <view class="avatar">{{ sellerAvatarText }}</view>
       <view>
         <view class="seller-name">{{ sellerName }}</view>
-        <view class="meta">{{ product.seller?.college || '中国农业大学' }}</view>
+        <view class="meta single">{{ product.seller?.college || '中国农业大学' }}</view>
       </view>
     </view>
 
+    <view v-if="readonlyMode" class="readonly-tip">该商品来自已完成订单，仅可查看详情，不能进行收藏、举报、聊天或预约操作。</view>
+
     <view class="bottom">
-      <button class="minor" @click="toggleFavorite">{{ favoriteText }}</button>
-      <button class="minor report" @click="report">举报</button>
-      <button class="primary" :disabled="product.status !== 'ON_SALE'" @click="reserve">
-        {{ product.status === 'ON_SALE' ? '提交预约' : statusText }}
+      <button class="icon-button favorite" :class="{ active: isFavorite }" :disabled="readonlyMode" @click="toggleFavorite">{{ isFavorite ? '★' : '☆' }}</button>
+      <button class="icon-button report" :class="{ disabled: isOwnProduct || readonlyMode }" :disabled="isOwnProduct || readonlyMode" @click="report">!</button>
+      <button class="chat" :disabled="readonlyMode || product.status !== 'ON_SALE'" @click="chat">聊一聊</button>
+      <button class="primary" :disabled="readonlyMode || product.status !== 'ON_SALE'" @click="reserve">
+        {{ readonlyMode ? '仅可查看' : (product.status === 'ON_SALE' ? '提交预约' : statusText) }}
       </button>
     </view>
   </view>
@@ -59,24 +61,41 @@ import {
   listCategories,
   removeFavorite
 } from '../../api/product'
-import { buildCategoryMap, formatProduct, getStatusText } from '../../utils/product-format'
-import { getToken, isVerifiedUser } from '../../utils/auth'
+import { createOrGetConversation } from '../../api/chat'
+import { buildCategoryMap, formatPrice, formatProduct, getStatusText, normalizeImage } from '../../utils/product-format'
+import { getToken, getUser, isVerifiedUser } from '../../utils/auth'
 import { navigate } from '../../utils/navigation'
 import { displayUserName, isBannedUserStatus, isCanceledUserStatus } from '../../utils/user-format'
 
 const product = ref(null)
 const isFavorite = ref(false)
+const failedImages = ref([])
+const readonlyMode = ref(false)
 
 const statusText = computed(() => getStatusText(product.value?.status))
-const favoriteText = computed(() => isFavorite.value ? '已收藏' : '收藏')
+const favoriteCount = computed(() => Number(product.value?.favoriteCount || product.value?.favorite_count || 0))
+const visibleImages = computed(() => {
+  const images = product.value?.images || []
+  return images.filter((image) => !failedImages.value.includes(image))
+})
 const sellerName = computed(() => displayUserName(product.value?.seller || {}, 'CAU 同学'))
+const sellerId = computed(() => product.value?.sellerId || product.value?.seller_id || product.value?.seller?.id || product.value?.userId || product.value?.user_id || product.value?.ownerId || product.value?.owner_id || '')
+const isOwnProduct = computed(() => {
+  const user = getUser() || {}
+  const currentUserId = user.id || user.userId || user.user_id
+  return currentUserId && sellerId.value && String(sellerId.value) === String(currentUserId)
+})
 const sellerAvatarText = computed(() => {
   const status = product.value?.seller?.accountStatus || product.value?.seller?.account_status || product.value?.seller?.status
-  if (isBannedUserStatus(status) || isCanceledUserStatus(status)) return '账'
-  return (sellerName.value || '卖').slice(0, 1)
+  if (isBannedUserStatus(status) || isCanceledUserStatus(status)) return '封'
+  return (sellerName.value || '同').slice(0, 1)
 })
 
 const ensureVerified = () => {
+  if (readonlyMode.value) {
+    uni.showToast({ title: '已完成订单商品仅可查看', icon: 'none' })
+    return false
+  }
   if (!getToken()) {
     uni.navigateTo({ url: '/pages/login/login' })
     return false
@@ -90,20 +109,40 @@ const ensureVerified = () => {
   return true
 }
 
+const adjustFavoriteCount = (delta) => {
+  const current = favoriteCount.value
+  product.value.favoriteCount = Math.max(0, current + delta)
+}
+
+const markImageFailed = (image) => {
+  if (!failedImages.value.includes(image)) {
+    failedImages.value = failedImages.value.concat(image)
+  }
+}
+
 const toggleFavorite = async () => {
   if (!ensureVerified()) return
+  if (isOwnProduct.value) {
+    uni.showToast({ title: '不能收藏自己的商品', icon: 'none' })
+    return
+  }
 
   try {
     if (isFavorite.value) {
       await removeFavorite(product.value.id)
+      isFavorite.value = false
+      adjustFavoriteCount(-1)
     } else {
       await addFavorite(product.value.id)
+      isFavorite.value = true
+      adjustFavoriteCount(1)
     }
 
-    isFavorite.value = !isFavorite.value
     uni.showToast({ title: isFavorite.value ? '收藏成功' : '已取消收藏', icon: 'success' })
   } catch (error) {
-    uni.showToast({ title: error.message || '收藏操作失败', icon: 'none' })
+    const message = String(error?.message || '')
+    const isOwnFavoriteError = message.includes('自己') || message.toLowerCase().includes('own')
+    uni.showToast({ title: isOwnFavoriteError ? '不能收藏自己的商品' : '收藏操作失败', icon: 'none' })
   }
 }
 
@@ -114,10 +153,73 @@ const reserve = () => {
 
 const report = () => {
   if (!ensureVerified() || !product.value?.id) return
+  if (isOwnProduct.value) {
+    uni.showToast({ title: '不能举报自己的商品', icon: 'none' })
+    return
+  }
   navigate('/pages/interaction/report', { targetType: 'PRODUCT', targetId: product.value.id })
 }
 
-onLoad(async ({ id }) => {
+const openSeller = () => {
+  if (!sellerId.value) return
+  navigate('/pages/user-profile/user-profile', {
+    id: sellerId.value,
+    productId: product.value?.id,
+    productTitle: product.value?.title
+  })
+}
+
+const chat = async () => {
+  if (!ensureVerified() || !product.value?.id) return
+  try {
+    const conversation = await createOrGetConversation(product.value.id)
+    const currentUserId = Number(getUser()?.id || getUser()?.userId || 0)
+    const targetUserId = Number(conversation.buyerId) === currentUserId ? conversation.sellerId : conversation.buyerId
+    navigate('/pages/chat/chat', {
+      conversationId: conversation.id,
+      title: product.value.title,
+      targetUserId,
+      productId: product.value.id
+    })
+  } catch (error) {
+    uni.showToast({ title: '暂时无法发起私信', icon: 'none' })
+  }
+}
+
+function buildSnapshotProduct(id, options = {}) {
+  const image = options.snapshotImage ? decodeURIComponent(options.snapshotImage) : ''
+  const title = options.snapshotTitle ? decodeURIComponent(options.snapshotTitle) : '订单商品'
+  const price = options.snapshotPrice || 0
+  const meetLocation = options.snapshotMeetLocation ? decodeURIComponent(options.snapshotMeetLocation) : '订单约定地点'
+  const sellerName = options.snapshotSellerName ? decodeURIComponent(options.snapshotSellerName) : 'CAU 同学'
+  return {
+    id,
+    title,
+    price,
+    priceText: formatPrice(price),
+    status: 'SOLD',
+    images: image ? [normalizeImage(image)] : [],
+    coverImage: normalizeImage(image),
+    description: '该商品来自已完成订单，当前为只读详情。',
+    conditionText: '订单商品',
+    timeText: '',
+    meetLocation,
+    sellerId: options.snapshotSellerId || '',
+    seller: { id: options.snapshotSellerId || '', nickname: sellerName, college: '中国农业大学' }
+  }
+}
+
+function getDetailErrorText(error) {
+  const message = String(error?.message || '')
+  if (message.includes('not found') || message.includes('不存在')) return '商品不存在或已下架'
+  if (message.includes('permission') || message.includes('forbidden') || message.includes('无权')) return '暂无权限查看该商品'
+  if (message.includes('sold') || message.includes('reserved') || message.includes('locked')) return '商品暂不可查看'
+  return '商品暂不可查看'
+}
+
+onLoad(async (options) => {
+  const { id } = options
+  readonlyMode.value = options.readonly === '1' || options.readonly === 1
   if (!id) {
     uni.showToast({ title: '商品不存在', icon: 'none' })
     return
@@ -130,12 +232,28 @@ onLoad(async ({ id }) => {
     ])
 
     product.value = formatProduct(detail, buildCategoryMap(categories))
+    uni.setStorageSync(`product-detail-cache-${id}`, product.value)
+    failedImages.value = []
 
     if (getToken()) {
       isFavorite.value = (await checkFavorite(id)).favorited
     }
   } catch (error) {
-    uni.showToast({ title: error.message || '商品加载失败', icon: 'none' })
+    const cached = uni.getStorageSync(`product-detail-cache-${id}`)
+    if (cached) {
+      product.value = cached
+      failedImages.value = []
+      if (!readonlyMode.value) {
+        uni.showToast({ title: '商品暂不可查看，显示最近一次详情', icon: 'none' })
+      }
+      return
+    }
+    if (readonlyMode.value) {
+      product.value = buildSnapshotProduct(id, options)
+      failedImages.value = []
+      return
+    }
+    uni.showToast({ title: getDetailErrorText(error), icon: 'none' })
   }
 })
 </script>
@@ -196,9 +314,16 @@ onLoad(async ({ id }) => {
 }
 
 .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx 18rpx;
   margin-top: 14rpx;
   color: #89938f;
   font-size: 23rpx;
+}
+
+.meta.single {
+  display: block;
 }
 
 .section-title,
@@ -206,16 +331,22 @@ onLoad(async ({ id }) => {
   font-weight: 700;
 }
 
-.description,
-.privacy {
+.description {
   margin-top: 16rpx;
   color: #58645f;
   line-height: 1.7;
+  white-space: pre-line;
+  word-break: break-word;
 }
 
-.privacy {
-  color: #9a7745;
-  font-size: 23rpx;
+.readonly-tip {
+  margin: 20rpx;
+  padding: 18rpx 22rpx;
+  border-radius: 16rpx;
+  background: #fff8e8;
+  color: #9a6a1d;
+  font-size: 24rpx;
+  line-height: 1.5;
 }
 
 .seller {
@@ -241,12 +372,13 @@ onLoad(async ({ id }) => {
   bottom: 0;
   left: 0;
   display: flex;
-  gap: 14rpx;
+  gap: 12rpx;
   padding: 16rpx 20rpx calc(16rpx + env(safe-area-inset-bottom));
   background: #fff;
 }
 
-.minor,
+.icon-button,
+.chat,
 .primary {
   height: 74rpx;
   border-radius: 999rpx;
@@ -254,14 +386,25 @@ onLoad(async ({ id }) => {
   line-height: 74rpx;
 }
 
-.minor {
-  width: 132rpx;
+.icon-button {
+  width: 74rpx;
+  padding: 0;
   background: #edf4f1;
   color: #23734f;
+  font-size: 34rpx;
 }
 
-.report {
-  color: #b85d45;
+.favorite.active { color: #f5b301; }
+.report { color: #d64545; font-weight: 800; }
+.report.disabled,
+.report[disabled] { color: #aeb8b3; background: #eef0f0; }
+
+.favorite[disabled] { color: #aeb8b3; background: #eef0f0; }
+
+.chat {
+  width: 138rpx;
+  background: #fff6e9;
+  color: #9a6a1d;
 }
 
 .primary {
@@ -270,7 +413,8 @@ onLoad(async ({ id }) => {
   color: #fff;
 }
 
-.primary[disabled] {
+.primary[disabled],
+.chat[disabled] {
   background: #b8c5c0;
   color: #fff;
 }

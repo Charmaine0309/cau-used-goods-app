@@ -9,7 +9,8 @@
     {
       "path": "pages/home/home",
       "style": {
-        "navigationBarTitleText": "首页"
+        "navigationBarTitleText": "首页",
+        "enablePullDownRefresh": true
       }
     },
     {
@@ -21,13 +22,26 @@
     {
       "path": "pages/category/category",
       "style": {
-        "navigationBarTitleText": "分类商品"
+        "navigationBarTitleText": "分类商品",
+        "enablePullDownRefresh": true
       }
     },
     {
       "path": "pages/detail/detail",
       "style": {
         "navigationBarTitleText": "商品详情"
+      }
+    },
+    {
+      "path": "pages/chat/chat",
+      "style": {
+        "navigationBarTitleText": "聊一聊"
+      }
+    },
+    {
+      "path": "pages/user-profile/user-profile",
+      "style": {
+        "navigationBarTitleText": "个人主页"
       }
     },
     {
@@ -103,6 +117,12 @@
       }
     },
     {
+      "path": "pages/messages/system-messages",
+      "style": {
+        "navigationBarTitleText": "系统消息"
+      }
+    },
+    {
       "path": "pages/interaction/message-detail",
       "style": {
         "navigationBarTitleText": "消息详情"
@@ -124,6 +144,12 @@
       "path": "pages/interaction/report-list",
       "style": {
         "navigationBarTitleText": "我的举报"
+      }
+    },
+    {
+      "path": "pages/interaction/report-detail",
+      "style": {
+        "navigationBarTitleText": "举报详情"
       }
     },
     {
@@ -219,19 +245,27 @@
     "list": [
       {
         "pagePath": "pages/home/home",
-        "text": "首页"
+        "text": "首页",
+        "iconPath": "static/tab-home.png",
+        "selectedIconPath": "static/tab-home-active.png"
       },
       {
         "pagePath": "pages/publish/publish",
-        "text": "发布"
+        "text": "发布",
+        "iconPath": "static/tab-publish.png",
+        "selectedIconPath": "static/tab-publish-active.png"
       },
       {
         "pagePath": "pages/messages/messages",
-        "text": "消息"
+        "text": "消息",
+        "iconPath": "static/tab-message.png",
+        "selectedIconPath": "static/tab-message-active.png"
       },
       {
         "pagePath": "pages/index/index",
-        "text": "我的"
+        "text": "我的",
+        "iconPath": "static/tab-mine.png",
+        "selectedIconPath": "static/tab-mine-active.png"
       }
     ]
   },

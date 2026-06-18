@@ -1,6 +1,7 @@
 <template>
   <view class="product">
-    <image class="product-image" :src="product.image" mode="aspectFill" />
+    <image v-if="product.image" class="product-image" :src="product.image" mode="aspectFill" />
+    <view v-else class="product-image product-placeholder">商品</view>
     <view class="product-body">
       <text class="product-title">{{ product.title }}</text>
       <text class="product-price">¥{{ product.price }}</text>
@@ -27,11 +28,19 @@ defineProps({
 }
 
 .product-image {
+  display: flex;
   flex: 0 0 148rpx;
   width: 148rpx;
   height: 116rpx;
+  align-items: center;
+  justify-content: center;
   border-radius: 14rpx;
   background: #edf2ef;
+}
+
+.product-placeholder {
+  color: #9aa5a1;
+  font-size: 22rpx;
 }
 
 .product-body {

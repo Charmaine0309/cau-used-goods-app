@@ -11,7 +11,7 @@
           <text class="order-no">订单 {{ item.orderNo }}</text>
           <text class="status" :class="item.status">{{ getOrderStatusText(item.status) }}</text>
         </view>
-        <view class="body" @click="openDetail(item)">
+        <view class="body" @click="openOrder(item)">
           <image v-if="item.productImage" class="cover" :src="normalizeImage(item.productImage)" mode="aspectFill" />
           <view v-else class="cover placeholder">暂无图片</view>
           <view class="content">
@@ -27,8 +27,16 @@
           <view class="actions">
             <button v-if="role === 'seller' && item.status === 'PENDING_CONFIRM'" class="action primary" @click.stop="confirm(item)">确认</button>
             <button v-if="role === 'seller' && item.status === 'WAIT_MEET'" class="action primary" @click.stop="complete(item)">完成</button>
+            <button
+              v-if="role === 'buyer' && item.status === 'COMPLETED'"
+              class="action primary"
+              :class="{ disabled: isReviewed(item) }"
+              :disabled="isReviewed(item)"
+              @click.stop="review(item)"
+            >
+              {{ isReviewed(item) ? '已评价' : '去评价' }}
+            </button>
             <button v-if="canCancel(item)" class="action warn" @click.stop="cancel(item)">取消</button>
-            <button class="action" @click.stop="openDetail(item)">商品</button>
           </view>
         </view>
       </view>
@@ -45,7 +53,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { cancelOrder, completeOrder, confirmOrder, listMyOrders } from '../../api/product'
 import { formatPrice, normalizeImage } from '../../utils/product-format'
 import { displayRelatedUserName } from '../../utils/user-format'
@@ -56,6 +64,7 @@ const orders = ref([])
 const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
+const loaded = ref(false)
 const finished = computed(() => orders.value.length >= total.value && total.value > 0)
 
 const orderStatusMap = {
@@ -80,6 +89,7 @@ const peerName = (item) => role.value === 'buyer'
   ? displayRelatedUserName(item, 'seller', 'CAU 同学')
   : displayRelatedUserName(item, 'buyer', 'CAU 同学')
 const canCancel = (item) => ['PENDING_CONFIRM', 'WAIT_MEET'].includes(item.status)
+const isReviewed = (item) => item.reviewed === true || uni.getStorageSync(`order-reviewed-${item.id}`) === true
 
 const loadOrders = async (reset = false) => {
   if (loading.value || (!reset && finished.value)) return
@@ -95,6 +105,7 @@ const loadOrders = async (reset = false) => {
     uni.showToast({ title: error.message, icon: 'none' })
   } finally {
     loading.value = false
+    loaded.value = true
     uni.stopPullDownRefresh()
   }
 }
@@ -107,16 +118,18 @@ const switchRole = (value) => {
   loadOrders(true)
 }
 
-const getProductId = (item) => item?.productId || item?.product_id || item?.product?.id || item?.productID || ''
-const openDetail = (item) => {
-  const productId = typeof item === 'object' ? getProductId(item) : item
-  if (!productId) {
-    uni.showToast({ title: '商品信息缺失，暂时无法查看', icon: 'none' })
+const openOrder = (item) => {
+  if (!item?.id) {
+    uni.showToast({ title: '订单信息缺失，暂时无法查看', icon: 'none' })
     return
   }
-  uni.navigateTo({ url: `/pages/detail/detail?id=${productId}` })
+  uni.navigateTo({ url: `/pages/order/detail?id=${item.id}` })
 }
 const goHome = () => uni.switchTab({ url: '/pages/home/home' })
+const review = (item) => {
+  if (isReviewed(item)) return
+  uni.navigateTo({ url: `/pages/interaction/review?orderId=${item.id}` })
+}
 
 const confirm = (item) => {
   uni.showModal({
@@ -176,6 +189,9 @@ onLoad((options) => {
   uni.setNavigationBarTitle({ title: role.value === 'buyer' ? '我买到的' : '我卖出的' })
   loadOrders(true)
 })
+onShow(() => {
+  if (loaded.value) loadOrders(true)
+})
 onReachBottom(() => loadOrders())
 onPullDownRefresh(() => loadOrders(true))
 </script>
@@ -206,6 +222,8 @@ onPullDownRefresh(() => loadOrders(true))
 .action { box-sizing: border-box; width: auto; min-width: 116rpx; height: 58rpx; padding: 0 22rpx; border-radius: 999rpx; background: #edf4f1; color: #23734f; font-size: 24rpx; line-height: 58rpx; white-space: nowrap; }
 .action.primary { background: #23734f; color: #fff; }
 .action.warn { background: #f4f1ed; color: #9a7745; }
+.action.disabled,
+.action[disabled] { background: #eef0f0; color: #9aa2a8; }
 .empty { margin-top: 140rpx; padding: 44rpx 28rpx; border-radius: 18rpx; background: #fff; text-align: center; }
 .empty-title { margin-bottom: 12rpx; color: #26342f; font-size: 32rpx; font-weight: 700; }
 .empty-button { width: 180rpx; height: 66rpx; margin-top: 28rpx; border-radius: 999rpx; background: #23734f; color: #fff; font-size: 26rpx; line-height: 66rpx; }

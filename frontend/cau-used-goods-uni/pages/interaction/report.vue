@@ -4,7 +4,7 @@
     <view class="card">
       <view class="field">
         <text class="field-label">举报对象</text>
-        <text class="picker-value">{{ form.targetType === 'ORDER' ? '交易订单' : '商品' }}：{{ form.targetId }}</text>
+        <text class="picker-value">{{ targetTypeLabel }}：{{ form.targetId }}</text>
       </view>
       <view class="field">
         <text class="field-label">举报原因</text>
@@ -33,7 +33,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { computed, reactive } from 'vue'
 import { tradeService } from '../../services/trade'
 import { REPORT_REASON } from '../../utils/constants'
-import { navigate, showError, showSuccess } from '../../utils/navigation'
+import { showError, showSuccess } from '../../utils/navigation'
 
 const reasons = [
   { value: 'FAKE_PRODUCT', label: REPORT_REASON.FAKE_PRODUCT },
@@ -45,6 +45,11 @@ const reasons = [
 const reasonLabels = reasons.map((item) => item.label)
 const form = reactive({ targetType: 'PRODUCT', targetId: '', reasonType: '', detail: '', images: [] })
 const selectedReasonLabel = computed(() => reasons.find((item) => item.value === form.reasonType)?.label || '')
+const targetTypeLabel = computed(() => ({
+  ORDER: '交易订单',
+  PRODUCT: '商品',
+  USER: '用户'
+}[form.targetType] || '对象'))
 
 onLoad((options) => {
   form.targetType = options.targetType || 'PRODUCT'
@@ -70,7 +75,7 @@ async function submit() {
   try {
     await tradeService.createReport({ ...form })
     showSuccess('举报已提交')
-    setTimeout(() => navigate('/pages/interaction/report-list'), 500)
+    setTimeout(() => uni.redirectTo({ url: '/pages/interaction/report-list' }), 500)
   } catch (error) {
     showError(error)
   }
