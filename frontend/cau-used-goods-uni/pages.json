@@ -147,6 +147,12 @@
       }
     },
     {
+      "path": "pages/interaction/browse-history",
+      "style": {
+        "navigationBarTitleText": "浏览历史"
+      }
+    },
+    {
       "path": "pages/interaction/report-detail",
       "style": {
         "navigationBarTitleText": "举报详情"

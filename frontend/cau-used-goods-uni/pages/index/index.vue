@@ -61,6 +61,13 @@
         </view>
         <text>&#8250;</text>
       </view>
+      <view :class="['menu-item', !isVerified ? 'locked' : '']" @click="goBrowseHistory">
+        <view>
+          <view class="menu-title">&#27983;&#35272;&#21382;&#21490;</view>
+          <view class="menu-desc">&#26597;&#30475;&#26368;&#36817;&#25171;&#24320;&#30340;&#21830;&#21697;</view>
+        </view>
+        <text>&#8250;</text>
+      </view>
       <view class="menu-item" @click="goStudentAuth">
         <view>
           <view class="menu-title">&#23398;&#29983;&#35748;&#35777;</view>
@@ -147,6 +154,7 @@ const goStudentAuth = () => uni.navigateTo({ url: '/pages/student-auth/student-a
 const goAdmin = () => uni.navigateTo({ url: '/pages/admin/admin' })
 const goFavorites = () => requireVerified(() => uni.navigateTo({ url: '/pages/interaction/favorites' }))
 const goReportList = () => requireVerified(() => uni.navigateTo({ url: '/pages/interaction/report-list' }))
+const goBrowseHistory = () => requireVerified(() => uni.navigateTo({ url: '/pages/interaction/browse-history' }))
 
 const logout = () => {
   clearAuth()

@@ -66,6 +66,7 @@ import { buildCategoryMap, formatPrice, formatProduct, getStatusText, normalizeI
 import { getToken, getUser, isVerifiedUser } from '../../utils/auth'
 import { navigate } from '../../utils/navigation'
 import { displayUserName, isBannedUserStatus, isCanceledUserStatus } from '../../utils/user-format'
+import { addBrowseHistory } from '../../utils/browse-history'
 
 const product = ref(null)
 const isFavorite = ref(false)
@@ -233,6 +234,7 @@ onLoad(async (options) => {
 
     product.value = formatProduct(detail, buildCategoryMap(categories))
     uni.setStorageSync(`product-detail-cache-${id}`, product.value)
+    addBrowseHistory(product.value)
     failedImages.value = []
 
     if (getToken()) {
